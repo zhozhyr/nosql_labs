@@ -1,0 +1,27 @@
+info:
+  name: health_check
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{base_url}}/health"
+  auth: inherit
+
+runtime:
+  variables:
+    - name: base_url
+      value: http://localhost:8080
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.status
+      operator: eq
+      value: '"ok"'
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
