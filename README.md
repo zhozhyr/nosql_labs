@@ -1,4 +1,7 @@
 # nosql_labs
+# EventHub - NoSQL Database Project
+
+[![EventHub](https://github.com/zhozhyr/nosql_labs/actions/workflows/eventhub.yml/badge.svg)](https://github.com/{your_username}/{your_repo}/actions/workflows/eventhub.yml)
 
 `nosql_labs` — это FastAPI-приложение для выполнения лабораторных работ по курсу NoSQL.
 
