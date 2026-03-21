@@ -1,48 +1,172 @@
-# EventHub - NoSQL Database Project
+# nosql_labs
 
-[![EventHub](https://github.com/zhozhyr/nosql_labs/actions/workflows/eventhub.yml/badge.svg)](https://github.com/zhozhyr/nosql_labs/actions/workflows/eventhub.yml)
+`nosql_labs` — это FastAPI-приложение для выполнения лабораторных работ по курсу NoSQL.
 
-Backend-сервис платформы мероприятий для практического изучения NoSQL баз данных.
+Проект запускается в Docker, использует Redis как внешнее хранилище и развивается по мере выполнения лабораторных работ. В текущем состоянии в проекте уже реализованы базовый health-check и работа с анонимными пользовательскими сессиями.
 
-## С чего начать
+## Что есть в проекте
 
-1. **‼️ Настройте репозиторий** — проведите обязательную настройку контрибьюторов и защиты ветки (см. ниже)
-2. **[Лабораторные работы](https://github.com/sitnikovik/ndbx/tree/main/docs/lab)** — технические задания для каждой лабораторной работы
-3. **[CONTRIBUTING.md](CONTRIBUTING.md)** — требования к структуре проекта, процесс разработки и проверки
-4. **[Документация курса](https://github.com/sitnikovik/ndbx)** — методические материалы и дополнительные ресурсы
+- FastAPI-приложение
+- запуск через Docker Compose
+- конфигурация через `.env.local`
+- Redis как инфраструктурная зависимость
+- Swagger UI для ручной проверки API
+- Bruno-коллекция для smoke-проверок
 
-> 💡 Не забудьте поменять `{your_username}` и `{your_repo}` в badge на ваши имя пользователя и название репозитория.
+## Технологии
 
-## Настройка репозитория
+- Python
+- FastAPI
+- Redis
+- Docker Compose
+- Pytest
 
-### Защита основной ветки
+## Запуск
 
-После создания репозитория из шаблона **обязательно настройте правила защиты для ветки `main`**:
+Перед запуском проверьте настройки в `.env.local`.
 
-1. Откройте **Settings** → **Branches** → **Add classic branch protection rule**
-2. В поле **Branch name pattern** укажите: `main`
-3. Включите следующие опции:
-   - **Require a pull request before merging**
-     - Require approvals: **1**: требует минимум одного одобрения перед слиянием
-   - ***Require status checks to pass before merging***
-     - Выберите *"autograder"*: проверит все лабораторные работы автоматически
-     - ***Require branches to be up to date before merging*** (рекомендуется):
-     требует, чтобы ветка PR была синхронизирована с последними изменениями из основной ветки перед слиянием
-   - ***Lock branch***: запрещает прямые коммиты в основную ветку
-   - ***Do not allow bypassing the above settings***: запрещает обход настроек защиты ветки
-4. Нажмите **Create** или **Save changes**
+Запуск в фоне:
 
-> ⚠️ **Важно:** Без этих настроек автоматические проверки не будут блокировать PR с ошибками.
+```bash
+make run
+```
 
-### Добавление коллабораторов
+Запуск с логами в текущем терминале:
 
-Чтобы преподаватели могли проводить код-ревью:
+```bash
+make rund
+```
 
-1. Откройте **Settings** → **Collaborators**
-2. Нажмите **Add people**
-3. Добавьте всех кто есть в списке ревьюеров в файле [CODEOWNERS](CODEOWNERS)
-4. Выберите роль: **Write** (или выше), иначе ревьюер не сможет одобрить PR
+Проверка статуса контейнеров:
 
-## Помощь
+```bash
+make services
+```
 
-Возникли вопросы? → [@sitnikovik](https://t.me/sitnikovik)
+Остановка:
+
+```bash
+make stop
+```
+
+После запуска приложение доступно по адресу [http://localhost:8080](http://localhost:8080), Swagger UI — [http://localhost:8080/docs](http://localhost:8080/docs).
+
+## Конфигурация
+
+Проект использует `.env.local` как основной источник конфигурации.
+
+Основные переменные окружения:
+
+- `APP_HOST` — хост приложения
+- `APP_PORT` — порт приложения
+- `APP_USER_SESSION_TTL` — TTL пользовательской сессии
+- `REDIS_HOST` — хост Redis
+- `REDIS_PORT` — порт Redis
+- `REDIS_PASSWORD` — пароль Redis
+- `REDIS_DB` — номер Redis database
+
+## Текущая функциональность
+
+### `GET /health`
+
+Проверка работоспособности сервиса.
+
+Ответ:
+
+```json
+{"status":"ok"}
+```
+
+Если клиент присылает cookie `X-Session-Id`, сервис возвращает её обратно в `Set-Cookie`, но не создаёт новую сессию и не продлевает TTL.
+
+### `POST /session`
+
+Endpoint для создания и обновления анонимной пользовательской сессии.
+
+Сессии:
+
+- хранятся в Redis
+- используют cookie `X-Session-Id`
+- имеют TTL
+- сохраняются по ключу `sid:{session_id}`
+- содержат поля `created_at` и `updated_at`
+
+Первый запрос создаёт новую сессию и возвращает `201 Created`. Повторный запрос с существующей сессией обновляет TTL и возвращает `200 OK`.
+
+## Архитектура
+
+Приложение разложено по фичам, чтобы HTTP-слой, логика сессий и работа с Redis были отделены друг от друга.
+
+- [app/main.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/main.py) — точка входа и сборка FastAPI-приложения
+- [app/health/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/health/router.py) — HTTP-обработчик `GET /health`
+- [app/sessions/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/sessions/router.py) — HTTP-обработчик `POST /session`
+- [app/sessions/service.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/sessions/service.py) — логика создания, обновления cookie и валидации `sid`
+- [app/sessions/store.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/sessions/store.py) — работа с Redis: хранение hash, TTL и обновление метаданных сессии
+- [app/sessions/dependencies.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/sessions/dependencies.py) — сборка Redis store для FastAPI dependency injection
+- [app/settings.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/settings.py) — загрузка конфигурации из `.env.local`
+
+Поток запроса выглядит так:
+
+1. HTTP-запрос приходит в router.
+2. Router получает cookie и конфигурацию.
+3. Session service решает, нужно обновить существующую сессию или создать новую.
+4. Session store выполняет операции в Redis.
+5. Router возвращает HTTP-ответ и устанавливает cookie.
+
+## Проверка API
+
+### Swagger
+
+Swagger UI доступен по адресу [http://localhost:8080/docs](http://localhost:8080/docs).
+
+### curl
+
+Создание сессии:
+
+```bash
+curl -i -c /tmp/nosql.cookies -X POST http://localhost:8080/session
+```
+
+Повторный запрос с той же cookie:
+
+```bash
+curl -i -b /tmp/nosql.cookies -X POST http://localhost:8080/session
+```
+
+Проверка health-check:
+
+```bash
+curl -i http://localhost:8080/health
+```
+
+### Bruno
+
+В проекте есть Bruno-коллекция в каталоге [tools/bruno/nosql_labs](/Users/zhozhyr/PycharmProjects/nosql_labs/tools/bruno/nosql_labs).
+
+Её можно использовать для smoke-проверки:
+
+- `POST /session`
+- `GET /health` с cookie
+
+## Тесты
+
+Запуск тестов:
+
+```bash
+poetry run pytest -q
+```
+
+## Структура проекта
+
+- [app](/Users/zhozhyr/PycharmProjects/nosql_labs/app) — приложение и основная логика
+- [app/health](/Users/zhozhyr/PycharmProjects/nosql_labs/app/health) — health-check API
+- [app/sessions](/Users/zhozhyr/PycharmProjects/nosql_labs/app/sessions) — сессии и работа с Redis
+- [tests](/Users/zhozhyr/PycharmProjects/nosql_labs/tests) — тесты
+- [tools](/Users/zhozhyr/PycharmProjects/nosql_labs/tools) — вспомогательные артефакты, включая Bruno-коллекцию
+- [docker-compose.yml](/Users/zhozhyr/PycharmProjects/nosql_labs/docker-compose.yml) — запуск приложения и Redis
+- [.env.local](/Users/zhozhyr/PycharmProjects/nosql_labs/.env.local) — конфигурация окружения
+- [Makefile](/Users/zhozhyr/PycharmProjects/nosql_labs/Makefile) — команды для запуска и остановки проекта
+
+## Назначение репозитория
+
+Этот репозиторий используется как рабочий проект для лабораторных работ по NoSQL. По мере выполнения следующих лабораторных работ функциональность приложения может расширяться, а README и документация будут обновляться вместе с проектом.
