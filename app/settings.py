@@ -4,14 +4,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_host: str = "localhost"
-    app_port: int = 8080
-    app_user_session_ttl: int = 60
+    app_host: str
+    app_port: int
+    app_user_session_ttl: int
 
-    redis_host: str = "redis"
-    redis_port: int = 6379
-    redis_password: str = ""
-    redis_db: int = 0
+    redis_host: str
+    redis_port: int
+    redis_password: str
+    redis_db: int
 
     model_config = SettingsConfigDict(
         env_file=".env.local",

@@ -1,7 +1,24 @@
+import os
+
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.sessions.dependencies import get_session_store
+from app.settings import get_settings
+
+# Храним конфигурацию тестов локально, чтобы тесты были изолированы
+TEST_ENV = {
+    "APP_HOST": "127.0.0.1",
+    "APP_PORT": "8080",
+    "APP_USER_SESSION_TTL": "60",
+    "REDIS_HOST": "redis",
+    "REDIS_PORT": "6379",
+    "REDIS_PASSWORD": "",
+    "REDIS_DB": "0",
+}
+
+for key, value in TEST_ENV.items():
+    os.environ.setdefault(key, value)
 
 
 class FakeSessionStore:
@@ -28,6 +45,9 @@ class FakeSessionStore:
 
 
 def create_client() -> tuple[TestClient, FakeSessionStore]:
+    get_settings.cache_clear()
+    get_session_store.cache_clear()
+
     store = FakeSessionStore()
     app.dependency_overrides = {}
     app.dependency_overrides[get_session_store] = lambda: store
