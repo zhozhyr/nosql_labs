@@ -1,7 +1,7 @@
 info:
-  name: health_check
+  name: health_with_cookie
   type: http
-  seq: 1
+  seq: 2
 
 http:
   method: GET
@@ -19,6 +19,15 @@ runtime:
     - expression: res.body.status
       operator: eq
       value: '"ok"'
+    - expression: res.headers["set-cookie"][0].includes("X-Session-Id=")
+      operator: eq
+      value: "true"
+    - expression: res.headers["set-cookie"][0].includes("HttpOnly")
+      operator: eq
+      value: "true"
+    - expression: res.headers["set-cookie"][0].includes("Path=/")
+      operator: eq
+      value: "true"
 
 settings:
   encodeUrl: true

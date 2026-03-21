@@ -1,0 +1,33 @@
+info:
+  name: session_create
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{base_url}}/session"
+  auth: inherit
+
+runtime:
+  variables:
+    - name: base_url
+      value: http://localhost:8080
+  assertions:
+    - expression: res.status === 200 || res.status === 201
+      operator: eq
+      value: "true"
+    - expression: res.headers["set-cookie"][0].includes("X-Session-Id=")
+      operator: eq
+      value: "true"
+    - expression: res.headers["set-cookie"][0].includes("HttpOnly")
+      operator: eq
+      value: "true"
+    - expression: res.headers["set-cookie"][0].includes("Path=/")
+      operator: eq
+      value: "true"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
