@@ -5,7 +5,7 @@
 
 `nosql_labs` — это FastAPI-приложение для выполнения лабораторных работ по курсу NoSQL.
 
-Проект запускается в Docker, использует Redis как внешнее хранилище и развивается по мере выполнения лабораторных работ. В текущем состоянии в проекте уже реализованы базовый health-check и работа с анонимными пользовательскими сессиями.
+Проект запускается в Docker, использует Redis для пользовательских сессий и MongoDB для хранения пользователей и событий. Функциональность приложения расширяется по мере выполнения лабораторных работ.
 
 ## Что есть в проекте
 
@@ -13,6 +13,7 @@
 - запуск через Docker Compose
 - конфигурация через `.env.local`
 - Redis как инфраструктурная зависимость
+- MongoDB как хранилище пользователей и событий
 - Swagger UI для ручной проверки API
 - Bruno-коллекция для smoke-проверок
 
@@ -21,6 +22,7 @@
 - Python
 - FastAPI
 - Redis
+- MongoDB
 - Docker Compose
 - Pytest
 
@@ -67,6 +69,11 @@ make stop
 - `REDIS_PORT` — порт Redis
 - `REDIS_PASSWORD` — пароль Redis
 - `REDIS_DB` — номер Redis database
+- `MONGODB_DATABASE` — имя базы данных MongoDB
+- `MONGODB_USER` — пользователь MongoDB
+- `MONGODB_PASSWORD` — пароль MongoDB
+- `MONGODB_HOST` — хост MongoDB
+- `MONGODB_PORT` — порт MongoDB
 
 ## Текущая функциональность
 
@@ -96,6 +103,26 @@ Endpoint для создания и обновления анонимной по
 
 Первый запрос создаёт новую сессию и возвращает `201 Created`. Повторный запрос с существующей сессией обновляет TTL и возвращает `200 OK`.
 
+### `POST /users`
+
+Регистрация пользователя с сохранением `password_hash` в MongoDB и созданием новой авторизованной сессии.
+
+### `POST /auth/login`
+
+Аутентификация пользователя по `username` и `password` с привязкой `user_id` к Redis-сессии.
+
+### `POST /auth/logout`
+
+Завершение пользовательской сессии и удаление cookie `X-Session-Id`.
+
+### `POST /events`
+
+Создание события авторизованным пользователем с сохранением документа в коллекции `events`.
+
+### `GET /events`
+
+Просмотр списка событий с фильтрацией по `title` и пагинацией через `limit` и `offset`.
+
 ## Архитектура
 
 Приложение разложено по фичам, чтобы HTTP-слой, логика сессий и работа с Redis были отделены друг от друга.
@@ -106,6 +133,9 @@ Endpoint для создания и обновления анонимной по
 - [app/sessions/service.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/sessions/service.py) — логика создания, обновления cookie и валидации `sid`
 - [app/sessions/store.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/sessions/store.py) — работа с Redis: хранение hash, TTL и обновление метаданных сессии
 - [app/sessions/dependencies.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/sessions/dependencies.py) — сборка Redis store для FastAPI dependency injection
+- [app/users/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/users/router.py) — регистрация пользователей
+- [app/auth/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/auth/router.py) — логин и logout
+- [app/events/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/events/router.py) — создание и просмотр событий
 - [app/settings.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/settings.py) — загрузка конфигурации из `.env.local`
 
 Поток запроса выглядит так:
@@ -150,6 +180,11 @@ curl -i http://localhost:8080/health
 
 - `POST /session`
 - `GET /health` с cookie
+- `POST /users`
+- `POST /auth/login`
+- `POST /events`
+- `GET /events`
+- `POST /auth/logout`
 
 ## Тесты
 

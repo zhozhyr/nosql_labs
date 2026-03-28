@@ -29,6 +29,16 @@ def set_session_cookie(response: Response, sid: str, ttl_seconds: int) -> None:
     )
 
 
+def expire_session_cookie(response: Response) -> None:
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value="",
+        httponly=True,
+        path="/",
+        max_age=0,
+    )
+
+
 def build_health_response(sid: str | None, ttl_seconds: int) -> JSONResponse:
     response = JSONResponse(content={"status": "ok"}, status_code=200)
     if sid is not None:
@@ -36,21 +46,71 @@ def build_health_response(sid: str | None, ttl_seconds: int) -> JSONResponse:
     return response
 
 
+def get_existing_session_id(
+    sid: str | None,
+    store: RedisSessionStore,
+) -> str | None:
+    if not is_valid_sid(sid):
+        return None
+    if not store.session_exists(sid):
+        return None
+    return sid
+
+
+def get_existing_session(
+    sid: str | None,
+    store: RedisSessionStore,
+) -> dict[str, str] | None:
+    if sid is None:
+        return None
+    return store.get_session(sid)
+
+
+def create_new_session(ttl_seconds: int, store: RedisSessionStore) -> str:
+    while True:
+        sid = generate_sid()
+        if store.create_session(sid, ttl_seconds):
+            return sid
+
+
+def start_fresh_authenticated_session(
+    user_id: str,
+    ttl_seconds: int,
+    store: RedisSessionStore,
+) -> str:
+    sid = create_new_session(ttl_seconds, store)
+    store.set_session_user_id(sid, user_id, ttl_seconds)
+    return sid
+
+
+def start_or_rebind_authenticated_session(
+    sid: str | None,
+    user_id: str,
+    ttl_seconds: int,
+    store: RedisSessionStore,
+) -> str:
+    existing_sid = get_existing_session_id(sid, store)
+    if existing_sid is None:
+        return start_fresh_authenticated_session(user_id, ttl_seconds, store)
+
+    store.set_session_user_id(existing_sid, user_id, ttl_seconds)
+    return existing_sid
+
+
 def handle_session_request(
     sid: str | None,
     ttl_seconds: int,
     store: RedisSessionStore,
 ) -> Response:
-    if is_valid_sid(sid) and store.session_exists(sid):
-        store.touch_session(sid, ttl_seconds)
+    existing_sid = get_existing_session_id(sid, store)
+    if existing_sid is not None:
+        store.touch_session(existing_sid, ttl_seconds)
 
         response = Response(status_code=200)
-        set_session_cookie(response, sid, ttl_seconds)
+        set_session_cookie(response, existing_sid, ttl_seconds)
         return response
 
-    while True:
-        new_sid = generate_sid()
-        if store.create_session(new_sid, ttl_seconds):
-            response = Response(status_code=201)
-            set_session_cookie(response, new_sid, ttl_seconds)
-            return response
+    new_sid = create_new_session(ttl_seconds, store)
+    response = Response(status_code=201)
+    set_session_cookie(response, new_sid, ttl_seconds)
+    return response
