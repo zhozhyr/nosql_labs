@@ -176,10 +176,23 @@ def test_login_returns_401_for_invalid_credentials():
     assert "user_id" not in deps.store.sessions[sid]
 
 
-def test_logout_deletes_session_and_expires_cookie():
+def test_logout_requires_authenticated_user():
     client, deps = create_client()
 
     sid = create_anonymous_session(client, deps)
+    response = client.post("/auth/logout")
+
+    assert response.status_code == 401
+    assert sid in deps.store.sessions
+    assert response.cookies.get(COOKIE_NAME) == sid
+
+
+def test_logout_deletes_authenticated_session_and_expires_cookie():
+    client, deps = create_client()
+
+    register_user(client, deps)
+    sid = client.cookies.get(COOKIE_NAME)
+
     response = client.post("/auth/logout")
 
     assert response.status_code == 204

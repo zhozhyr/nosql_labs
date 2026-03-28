@@ -5,6 +5,7 @@ from app.security import PasswordHasher
 from app.sessions.dependencies import get_session_store
 from app.sessions.service import (
     expire_session_cookie,
+    get_existing_session,
     get_existing_session_id,
     set_session_cookie,
     start_or_rebind_authenticated_session,
@@ -90,9 +91,17 @@ def logout(
     request: Request,
     store: RedisSessionStore = Depends(get_session_store),
 ) -> Response:
-    sid = request.cookies.get("X-Session-Id")
-    if sid is not None:
-        store.delete_session(sid)
+    settings = get_settings()
+    sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
+    session = get_existing_session(sid, store)
+    if session is None or "user_id" not in session:
+        response = Response(status_code=401)
+        if sid is not None:
+            store.touch_session(sid, settings.app_user_session_ttl)
+            set_session_cookie(response, sid, settings.app_user_session_ttl)
+        return response
+
+    store.delete_session(sid)
 
     response = Response(status_code=204)
     expire_session_cookie(response)
