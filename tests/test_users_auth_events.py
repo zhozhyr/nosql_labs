@@ -49,7 +49,7 @@ def test_create_user_registers_user_and_binds_new_session():
     assert deps.user_repository.find_by_username("j0hnd0e42") is not None
 
 
-def test_create_user_requires_existing_session():
+def test_create_user_creates_authenticated_session_without_existing_session():
     client, deps = create_client()
 
     response = client.post(
@@ -61,8 +61,10 @@ def test_create_user_requires_existing_session():
         },
     )
 
-    assert response.status_code == 401
-    assert deps.store.sessions == {}
+    assert response.status_code == 201
+    sid = response.cookies.get(COOKIE_NAME)
+    assert sid is not None
+    assert deps.store.sessions[sid]["user_id"] == "user-1"
 
 
 @pytest.mark.parametrize(

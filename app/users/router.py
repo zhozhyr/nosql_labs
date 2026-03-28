@@ -30,8 +30,6 @@ def create_user(
 ) -> Response:
     settings = get_settings()
     current_sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
-    if current_sid is None:
-        return Response(status_code=401)
     body = payload if isinstance(payload, dict) else {}
 
     fields = {
