@@ -1,0 +1,43 @@
+info:
+  name: event_create
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{base_url}}/events"
+  auth: inherit
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "title": "Bruno Party",
+        "address": "г. Санкт-Петербург, ул. Пушкина, дом Колотушкина",
+        "started_at": "2026-04-01T12:00:00+03:00",
+        "finished_at": "2026-04-01T23:00:00+03:00",
+        "description": "Bruno smoke event"
+      }
+
+runtime:
+  variables:
+    - name: base_url
+      value: http://localhost:8080
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
+    - expression: typeof res.body.id === "string"
+      operator: eq
+      value: "true"
+    - expression: res.headers["set-cookie"][0].includes("X-Session-Id=")
+      operator: eq
+      value: "true"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
