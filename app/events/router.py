@@ -81,12 +81,18 @@ def _error_response(
     return response
 
 
+def _resolve_event_repository(request: Request) -> EventRepository:
+    provider = request.app.dependency_overrides.get(get_event_repository)
+    if provider is not None:
+        return provider()
+    return get_event_repository()
+
+
 @router.post("/events")
 def create_event(
     request: Request,
     payload: object = Body(default_factory=dict),
     store: RedisSessionStore = Depends(get_session_store),
-    repository: EventRepository = Depends(get_event_repository),
 ) -> Response:
     settings = get_settings()
     sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
@@ -116,6 +122,7 @@ def create_event(
                 store,
             )
 
+    repository = _resolve_event_repository(request)
     event_id = repository.create_event(
         {
             "title": str(fields["title"]).strip(),
@@ -254,7 +261,6 @@ def update_event(
     request: Request,
     payload: object = Body(default_factory=dict),
     store: RedisSessionStore = Depends(get_session_store),
-    repository: EventRepository = Depends(get_event_repository),
 ) -> Response:
     settings = get_settings()
     sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
@@ -311,6 +317,7 @@ def update_event(
         else:
             updates["location.city"] = city
 
+    repository = _resolve_event_repository(request)
     updated = repository.update_event(
         event_id=event_id,
         user_id=str(session["user_id"]),
