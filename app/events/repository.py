@@ -57,6 +57,7 @@ class MongoEventRepository:
         self.users_collection = db["users"]
         self.collection.create_index([("created_by", ASCENDING)])
         self.collection.create_index([("title", ASCENDING)])
+        self.collection.create_index([("title", ASCENDING), ("created_by", ASCENDING)])
         self.collection.create_index([("category", ASCENDING)])
         self.collection.create_index([("price", ASCENDING)])
         self.collection.create_index([("location.city", ASCENDING)])
