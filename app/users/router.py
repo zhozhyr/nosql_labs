@@ -4,6 +4,12 @@ from fastapi.responses import JSONResponse
 from app.events.dependencies import get_event_repository
 from app.events.models import ListEventsResponse
 from app.events.repository import EventRepository
+from app.events.router import (
+    _is_non_empty_string,
+    _is_valid_category,
+    _is_valid_date,
+    _normalize_date,
+)
 from app.security import PasswordHasher
 from app.sessions.dependencies import get_session_store
 from app.sessions.service import (
@@ -206,10 +212,65 @@ def get_user_events(
             store
         )
 
+    filters: dict[str, object] = {"created_by": user_id}
+
+    for name in ("title", "id", "city"):
+        value = request.query_params.get(name)
+        if value is not None:
+            if not _is_non_empty_string(value):
+                return _error_response(
+                    400,
+                    f'invalid "{name}" field',
+                    sid,
+                    settings.app_user_session_ttl,
+                    store,
+                )
+            filters[name] = value
+
+    category = request.query_params.get("category")
+    if category is not None:
+        if not _is_valid_category(category):
+            return _error_response(
+                400,
+                'invalid "category" field',
+                sid,
+                settings.app_user_session_ttl,
+                store,
+            )
+        filters["category"] = category
+
+    for name in ("limit", "offset", "price_from", "price_to"):
+        raw = request.query_params.get(name)
+        if raw is None:
+            continue
+        if not raw.isdigit():
+            return _error_response(
+                400,
+                f'invalid "{name}" field',
+                sid,
+                settings.app_user_session_ttl,
+                store,
+            )
+        filters[name] = int(raw)
+
+    for name in ("date_from", "date_to"):
+        value = request.query_params.get(name)
+        if value is None:
+            continue
+        if not _is_valid_date(value):
+            return _error_response(
+                400,
+                f'invalid "{name}" field',
+                sid,
+                settings.app_user_session_ttl,
+                store,
+            )
+        filters[name] = _normalize_date(value)
+
     events = event_repository.list_events(
-        filters={"created_by": user_id},
-        limit=None,
-        offset=None,
+        filters=filters,
+        limit=filters.get("limit") if isinstance(filters.get("limit"), int) else None,
+        offset=filters.get("offset") if isinstance(filters.get("offset"), int) else None,
     )
     response = JSONResponse(
         status_code=200,
