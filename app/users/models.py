@@ -14,3 +14,14 @@ class UserRecord(BaseModel):
     full_name: str
     username: str
     password_hash: str
+
+
+class UserItem(BaseModel):
+    id: str
+    full_name: str
+    username: str
+
+
+class ListUsersResponse(BaseModel):
+    users: list[UserItem]
+    count: int

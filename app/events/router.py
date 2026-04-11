@@ -5,7 +5,7 @@ from fastapi import APIRouter, Body, Depends, Request, Response
 from fastapi.responses import JSONResponse
 
 from app.events.dependencies import get_event_repository
-from app.events.models import ListEventsResponse
+from app.events.models import EventItem, ListEventsResponse
 from app.events.repository import EventRepository
 from app.sessions.dependencies import get_session_store
 from app.sessions.service import (
@@ -19,6 +19,8 @@ from app.settings import get_settings
 router = APIRouter()
 
 RFC3339_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$")
+DATE_RE = re.compile(r"^\d{8}$")
+VALID_CATEGORIES = {"meetup", "concert", "exhibition", "party", "other"}
 
 
 def _is_non_empty_string(value: object) -> bool:
@@ -36,6 +38,28 @@ def _is_valid_rfc3339(value: object) -> bool:
     except ValueError:
         return False
     return parsed.tzinfo is not None
+
+
+def _is_valid_date(value: object) -> bool:
+    if not isinstance(value, str) or not DATE_RE.fullmatch(value):
+        return False
+    try:
+        datetime.strptime(value, "%Y%m%d")
+    except ValueError:
+        return False
+    return True
+
+
+def _normalize_date(value: str) -> str:
+    return f"{value[:4]}-{value[4:6]}-{value[6:8]}"
+
+
+def _is_valid_category(value: object) -> bool:
+    return isinstance(value, str) and value in VALID_CATEGORIES
+
+
+def _is_valid_uint(value: object) -> bool:
+    return isinstance(value, int) and value >= 0 and not isinstance(value, bool)
 
 
 def _error_response(
@@ -126,61 +150,67 @@ def list_events(
 ) -> Response:
     settings = get_settings()
     sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
-    title = request.query_params.get("title")
-    limit_raw = request.query_params.get("limit")
-    offset_raw = request.query_params.get("offset")
+    filters: dict[str, object] = {}
 
-    if title is not None and not _is_non_empty_string(title):
-        return _error_response(
-            400,
-            'invalid "title" parameter',
-            sid,
-            settings.app_user_session_ttl,
-            store,
-        )
+    str_params = ("title", "id", "city", "user")
+    for name in str_params:
+        value = request.query_params.get(name)
+        if value is not None:
+            if not _is_non_empty_string(value):
+                return _error_response(
+                    400,
+                    f'invalid "{name}" field',
+                    sid,
+                    settings.app_user_session_ttl,
+                    store,
+                )
+            filters[name] = value
 
-    limit: int | None = None
-    if limit_raw is not None:
-        if not limit_raw.isdigit():
+    category = request.query_params.get("category")
+    if category is not None:
+        if not _is_valid_category(category):
             return _error_response(
                 400,
-                'invalid "limit" parameter',
+                'invalid "category" field',
                 sid,
                 settings.app_user_session_ttl,
                 store,
             )
-        limit = int(limit_raw)
+        filters["category"] = category
 
-    offset: int | None = None
-    if offset_raw is not None:
-        if not offset_raw.isdigit():
+    for name in ("limit", "offset", "price_from", "price_to"):
+        raw = request.query_params.get(name)
+        if raw is None:
+            continue
+        if not raw.isdigit():
             return _error_response(
                 400,
-                'invalid "offset" parameter',
+                f'invalid "{name}" field',
                 sid,
                 settings.app_user_session_ttl,
                 store,
             )
-        offset = int(offset_raw)
+        filters[name] = int(raw)
 
-    if limit is not None and limit < 0:
-        return _error_response(
-            400,
-            'invalid "limit" parameter',
-            sid,
-            settings.app_user_session_ttl,
-            store,
-        )
-    if offset is not None and offset < 0:
-        return _error_response(
-            400,
-            'invalid "offset" parameter',
-            sid,
-            settings.app_user_session_ttl,
-            store,
-        )
+    for name in ("date_from", "date_to"):
+        value = request.query_params.get(name)
+        if value is None:
+            continue
+        if not _is_valid_date(value):
+            return _error_response(
+                400,
+                f'invalid "{name}" field',
+                sid,
+                settings.app_user_session_ttl,
+                store,
+            )
+        filters[name] = _normalize_date(value)
 
-    events = repository.list_events(title=title, limit=limit, offset=offset)
+    events = repository.list_events(
+        filters=filters,
+        limit=filters.get("limit") if isinstance(filters.get("limit"), int) else None,
+        offset=filters.get("offset") if isinstance(filters.get("offset"), int) else None,
+    )
     response = JSONResponse(
         status_code=200,
         content={
@@ -190,4 +220,113 @@ def list_events(
     )
     if sid is not None:
         set_session_cookie(response, sid, settings.app_user_session_ttl)
+    return response
+
+
+@router.get("/events/{event_id}", response_model=EventItem)
+def get_event(
+    event_id: str,
+    request: Request,
+    store: RedisSessionStore = Depends(get_session_store),
+    repository: EventRepository = Depends(get_event_repository),
+) -> Response:
+    settings = get_settings()
+    sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
+    event = repository.get_event_by_id(event_id)
+    if event is None:
+        return _error_response(
+            404,
+            "Not found",
+            sid,
+            settings.app_user_session_ttl,
+            store
+        )
+
+    response = JSONResponse(status_code=200, content=event.model_dump())
+    if sid is not None:
+        set_session_cookie(response, sid, settings.app_user_session_ttl)
+    return response
+
+
+@router.patch("/events/{event_id}")
+def update_event(
+    event_id: str,
+    request: Request,
+    payload: object = Body(default_factory=dict),
+    store: RedisSessionStore = Depends(get_session_store),
+    repository: EventRepository = Depends(get_event_repository),
+) -> Response:
+    settings = get_settings()
+    sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
+    session = get_existing_session(sid, store)
+    if session is None or "user_id" not in session:
+        return _error_response(401, None, sid, settings.app_user_session_ttl, store)
+
+    body = payload if isinstance(payload, dict) else {}
+    updates: dict[str, object] = {}
+    unset_fields: list[str] = []
+
+    if "category" in body:
+        if not _is_valid_category(body["category"]):
+            return _error_response(
+                400,
+                'invalid "category" field',
+                sid,
+                settings.app_user_session_ttl,
+                store,
+            )
+        updates["category"] = body["category"]
+
+    if "price" in body:
+        if not _is_valid_uint(body["price"]):
+            return _error_response(
+                400,
+                'invalid "price" field',
+                sid,
+                settings.app_user_session_ttl,
+                store,
+            )
+        updates["price"] = body["price"]
+
+    if "city" in body:
+        city = body["city"]
+        if not isinstance(city, str):
+            return _error_response(
+                400,
+                'invalid "city" field',
+                sid,
+                settings.app_user_session_ttl,
+                store,
+            )
+        if city == "":
+            unset_fields.append("location.city")
+        elif city.strip() == "":
+            return _error_response(
+                400,
+                'invalid "city" field',
+                sid,
+                settings.app_user_session_ttl,
+                store,
+            )
+        else:
+            updates["location.city"] = city
+
+    updated = repository.update_event(
+        event_id=event_id,
+        user_id=str(session["user_id"]),
+        updates=updates,
+        unset_fields=unset_fields,
+    )
+    if not updated:
+        return _error_response(
+            404,
+            "Not found. Be sure that event exists and you are the organizer",
+            sid,
+            settings.app_user_session_ttl,
+            store,
+        )
+
+    store.touch_session(sid, settings.app_user_session_ttl)
+    response = Response(status_code=204)
+    set_session_cookie(response, sid, settings.app_user_session_ttl)
     return response

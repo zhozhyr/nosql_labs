@@ -8,8 +8,12 @@ services:
     ports:
       - "${APP_PORT}:${APP_PORT}"
     depends_on:
-      - redis
-      - mongodb
+      redis:
+        condition: service_started
+      mongos:
+        condition: service_started
+      mongo-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   redis:
@@ -29,17 +33,274 @@ services:
         fi
     restart: unless-stopped
 
-  mongodb:
-    image: mongo:8.2
+  configsvr1:
+    image: ${MONGO_IMAGE}
     env_file:
       - .env.local
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USER}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD}
+    command:
+      [
+        "mongod",
+        "--configsvr",
+        "--replSet", "${CONFIG_REPLSET}",
+        "--port", "${CONFIGSVR_PORT}",
+        "--bind_ip_all"
+      ]
+    ports:
+      - "${CONFIGSVR_PORT}:${CONFIGSVR_PORT}"
+    volumes:
+      - configsvr1-data:/data/db
+    restart: unless-stopped
+
+  shard1-primary:
+    image: ${MONGO_IMAGE}
+    env_file:
+      - .env.local
+    command:
+      [
+        "mongod",
+        "--shardsvr",
+        "--replSet", "${SHARD1_REPLSET}",
+        "--port", "${SHARD1_PRIMARY_PORT}",
+        "--bind_ip_all"
+      ]
+    ports:
+      - "${SHARD1_PRIMARY_PORT}:${SHARD1_PRIMARY_PORT}"
+    volumes:
+      - shard1-primary-data:/data/db
+    restart: unless-stopped
+
+  shard1-secondary-1:
+    image: ${MONGO_IMAGE}
+    env_file:
+      - .env.local
+    command:
+      [
+        "mongod",
+        "--shardsvr",
+        "--replSet", "${SHARD1_REPLSET}",
+        "--port", "${SHARD1_SECONDARY_1_PORT}",
+        "--bind_ip_all"
+      ]
+    ports:
+      - "${SHARD1_SECONDARY_1_PORT}:${SHARD1_SECONDARY_1_PORT}"
+    volumes:
+      - shard1-secondary-1-data:/data/db
+    restart: unless-stopped
+
+  shard1-secondary-2:
+    image: ${MONGO_IMAGE}
+    env_file:
+      - .env.local
+    command:
+      [
+        "mongod",
+        "--shardsvr",
+        "--replSet", "${SHARD1_REPLSET}",
+        "--port", "${SHARD1_SECONDARY_2_PORT}",
+        "--bind_ip_all"
+      ]
+    ports:
+      - "${SHARD1_SECONDARY_2_PORT}:${SHARD1_SECONDARY_2_PORT}"
+    volumes:
+      - shard1-secondary-2-data:/data/db
+    restart: unless-stopped
+
+  shard2-primary:
+    image: ${MONGO_IMAGE}
+    env_file:
+      - .env.local
+    command:
+      [
+        "mongod",
+        "--shardsvr",
+        "--replSet", "${SHARD2_REPLSET}",
+        "--port", "${SHARD2_PRIMARY_PORT}",
+        "--bind_ip_all"
+      ]
+    ports:
+      - "${SHARD2_PRIMARY_PORT}:${SHARD2_PRIMARY_PORT}"
+    volumes:
+      - shard2-primary-data:/data/db
+    restart: unless-stopped
+
+  shard2-secondary-1:
+    image: ${MONGO_IMAGE}
+    env_file:
+      - .env.local
+    command:
+      [
+        "mongod",
+        "--shardsvr",
+        "--replSet", "${SHARD2_REPLSET}",
+        "--port", "${SHARD2_SECONDARY_1_PORT}",
+        "--bind_ip_all"
+      ]
+    ports:
+      - "${SHARD2_SECONDARY_1_PORT}:${SHARD2_SECONDARY_1_PORT}"
+    volumes:
+      - shard2-secondary-1-data:/data/db
+    restart: unless-stopped
+
+  shard2-secondary-2:
+    image: ${MONGO_IMAGE}
+    env_file:
+      - .env.local
+    command:
+      [
+        "mongod",
+        "--shardsvr",
+        "--replSet", "${SHARD2_REPLSET}",
+        "--port", "${SHARD2_SECONDARY_2_PORT}",
+        "--bind_ip_all"
+      ]
+    ports:
+      - "${SHARD2_SECONDARY_2_PORT}:${SHARD2_SECONDARY_2_PORT}"
+    volumes:
+      - shard2-secondary-2-data:/data/db
+    restart: unless-stopped
+
+  mongos:
+    image: ${MONGO_IMAGE}
+    env_file:
+      - .env.local
+    command:
+      [
+        "mongos",
+        "--configdb", "${CONFIG_REPLSET}/${CONFIGSVR_HOST}:${CONFIGSVR_PORT}",
+        "--port", "${MONGODB_PORT}",
+        "--bind_ip_all"
+      ]
     ports:
       - "${MONGODB_PORT}:${MONGODB_PORT}"
-    command:
-      - sh
-      - -c
-      - exec mongod --bind_ip_all --port "$${MONGODB_PORT}"
+    depends_on:
+      - configsvr1
+      - shard1-primary
+      - shard1-secondary-1
+      - shard1-secondary-2
+      - shard2-primary
+      - shard2-secondary-1
+      - shard2-secondary-2
     restart: unless-stopped
+
+  mongo-init:
+    image: ${MONGO_IMAGE}
+    env_file:
+      - .env.local
+    depends_on:
+      - configsvr1
+      - shard1-primary
+      - shard1-secondary-1
+      - shard1-secondary-2
+      - shard2-primary
+      - shard2-secondary-1
+      - shard2-secondary-2
+      - mongos
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+
+        echo "Waiting for config server..."
+        until mongosh --host ${CONFIGSVR_HOST} --port ${CONFIGSVR_PORT} --eval "db.adminCommand('ping')" >/dev/null 2>&1; do sleep 2; done
+
+        echo "Init config replica set..."
+        mongosh --host ${CONFIGSVR_HOST} --port ${CONFIGSVR_PORT} --eval '
+          try {
+            rs.status()
+          } catch (e) {
+            rs.initiate({
+              _id: "'"${CONFIG_REPLSET}"'",
+              configsvr: true,
+              members: [
+                { _id: 0, host: "'"${CONFIGSVR_HOST}:${CONFIGSVR_PORT}"'" }
+              ]
+            })
+          }
+        '
+
+        echo "Waiting for shard nodes..."
+        until mongosh --host ${SHARD1_PRIMARY_HOST} --port ${SHARD1_PRIMARY_PORT} --eval "db.adminCommand('ping')" >/dev/null 2>&1; do sleep 2; done
+        until mongosh --host ${SHARD1_SECONDARY_1_HOST} --port ${SHARD1_SECONDARY_1_PORT} --eval "db.adminCommand('ping')" >/dev/null 2>&1; do sleep 2; done
+        until mongosh --host ${SHARD1_SECONDARY_2_HOST} --port ${SHARD1_SECONDARY_2_PORT} --eval "db.adminCommand('ping')" >/dev/null 2>&1; do sleep 2; done
+        until mongosh --host ${SHARD2_PRIMARY_HOST} --port ${SHARD2_PRIMARY_PORT} --eval "db.adminCommand('ping')" >/dev/null 2>&1; do sleep 2; done
+        until mongosh --host ${SHARD2_SECONDARY_1_HOST} --port ${SHARD2_SECONDARY_1_PORT} --eval "db.adminCommand('ping')" >/dev/null 2>&1; do sleep 2; done
+        until mongosh --host ${SHARD2_SECONDARY_2_HOST} --port ${SHARD2_SECONDARY_2_PORT} --eval "db.adminCommand('ping')" >/dev/null 2>&1; do sleep 2; done
+
+        echo "Init shard 1 replica set..."
+        mongosh --host ${SHARD1_PRIMARY_HOST} --port ${SHARD1_PRIMARY_PORT} --eval '
+          try {
+            rs.status()
+          } catch (e) {
+            rs.initiate({
+              _id: "'"${SHARD1_REPLSET}"'",
+              members: [
+                { _id: 0, host: "'"${SHARD1_PRIMARY_HOST}:${SHARD1_PRIMARY_PORT}"'" },
+                { _id: 1, host: "'"${SHARD1_SECONDARY_1_HOST}:${SHARD1_SECONDARY_1_PORT}"'" },
+                { _id: 2, host: "'"${SHARD1_SECONDARY_2_HOST}:${SHARD1_SECONDARY_2_PORT}"'" }
+              ]
+            })
+          }
+        '
+
+        echo "Init shard 2 replica set..."
+        mongosh --host ${SHARD2_PRIMARY_HOST} --port ${SHARD2_PRIMARY_PORT} --eval '
+          try {
+            rs.status()
+          } catch (e) {
+            rs.initiate({
+              _id: "'"${SHARD2_REPLSET}"'",
+              members: [
+                { _id: 0, host: "'"${SHARD2_PRIMARY_HOST}:${SHARD2_PRIMARY_PORT}"'" },
+                { _id: 1, host: "'"${SHARD2_SECONDARY_1_HOST}:${SHARD2_SECONDARY_1_PORT}"'" },
+                { _id: 2, host: "'"${SHARD2_SECONDARY_2_HOST}:${SHARD2_SECONDARY_2_PORT}"'" }
+              ]
+            })
+          }
+        '
+
+        echo "Waiting for replica sets to elect primary..."
+        sleep 15
+
+        echo "Waiting for mongos..."
+        until mongosh --host ${MONGODB_HOST} --port ${MONGODB_PORT} --eval "db.adminCommand('ping')" >/dev/null 2>&1; do sleep 2; done
+
+        echo "Adding shards to mongos..."
+        mongosh --host ${MONGODB_HOST} --port ${MONGODB_PORT} --eval '
+          try {
+            sh.addShard("'"${SHARD1_REPLSET}/${SHARD1_PRIMARY_HOST}:${SHARD1_PRIMARY_PORT},${SHARD1_SECONDARY_1_HOST}:${SHARD1_SECONDARY_1_PORT},${SHARD1_SECONDARY_2_HOST}:${SHARD1_SECONDARY_2_PORT}"'")
+          } catch (e) {
+            print("Shard 1: " + e.message)
+          }
+
+          try {
+            sh.addShard("'"${SHARD2_REPLSET}/${SHARD2_PRIMARY_HOST}:${SHARD2_PRIMARY_PORT},${SHARD2_SECONDARY_1_HOST}:${SHARD2_SECONDARY_1_PORT},${SHARD2_SECONDARY_2_HOST}:${SHARD2_SECONDARY_2_PORT}"'")
+          } catch (e) {
+            print("Shard 2: " + e.message)
+          }
+
+          try {
+            sh.enableSharding("'"${MONGODB_DATABASE}"'")
+          } catch (e) {
+            print("Enable sharding: " + e.message)
+          }
+
+          try {
+            db = db.getSiblingDB("'"${MONGODB_DATABASE}"'")
+            sh.shardCollection("'"${MONGODB_DATABASE}.events"'", { created_by: "hashed" })
+          } catch (e) {
+            print("Shard collection: " + e.message)
+          }
+
+          quit(0)
+        '
+    restart: "no"
+
+volumes:
+  configsvr1-data:
+  shard1-primary-data:
+  shard1-secondary-1-data:
+  shard1-secondary-2-data:
+  shard2-primary-data:
+  shard2-secondary-1-data:
+  shard2-secondary-2-data:

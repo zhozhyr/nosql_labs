@@ -35,7 +35,7 @@ dev = [
 
 [tool.isort]
 profile = "black"
-line_length = 88
+line_length = 89
 skip = [
     ".git",
     "__pycache__",
