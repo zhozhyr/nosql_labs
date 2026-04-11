@@ -55,14 +55,19 @@ class MongoEventRepository:
         db = client[database]
         self.collection = db["events"]
         self.users_collection = db["users"]
-        self.collection.create_index([("title", ASCENDING)], unique=True)
-        self.collection.create_index([("title", ASCENDING), ("created_by", ASCENDING)])
         self.collection.create_index([("created_by", ASCENDING)])
+        self.collection.create_index([("title", ASCENDING)])
         self.collection.create_index([("category", ASCENDING)])
         self.collection.create_index([("price", ASCENDING)])
         self.collection.create_index([("location.city", ASCENDING)])
 
     def create_event(self, document: dict[str, str | dict[str, str]]) -> str | None:
+        existing = self.collection.find_one(
+            {"title": document.get("title"), "created_by": document.get("created_by")},
+            {"_id": 1},
+        )
+        if existing is not None:
+            return None
         try:
             result = self.collection.insert_one(document)
         except Exception as exc:
