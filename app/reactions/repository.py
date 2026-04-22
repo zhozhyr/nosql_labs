@@ -67,7 +67,7 @@ class CassandraReactionRepository:
             auth_provider=auth_provider,
             execution_profiles=execution_profiles,
         )
-        self._session = self._cluster.connect()
+        self._session = self._connect_with_retry()
         self._keyspace = keyspace
         self._redis = redis.Redis(
             host=redis_host,
@@ -179,3 +179,19 @@ class CassandraReactionRepository:
         if last_error is not None:
             raise last_error
         raise RuntimeError("Cassandra query failed")
+
+    def _connect_with_retry(self):
+        attempts = 30
+        delay_seconds = 2
+        last_error: Exception | None = None
+
+        for _ in range(attempts):
+            try:
+                return self._cluster.connect()
+            except Exception as exc:
+                last_error = exc
+                time.sleep(delay_seconds)
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Cassandra connection failed")
