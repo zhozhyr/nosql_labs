@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     app_host: str
     app_port: int
     app_user_session_ttl: int
+    app_like_ttl: int
 
     redis_host: str
     redis_port: int
@@ -20,6 +21,12 @@ class Settings(BaseSettings):
     mongodb_password: str
     mongodb_host: str
     mongodb_port: int
+    cassandra_hosts: str
+    cassandra_port: int
+    cassandra_username: str
+    cassandra_password: str
+    cassandra_keyspace: str
+    cassandra_consistency: str
 
     model_config = SettingsConfigDict(
         env_file=".env.local",

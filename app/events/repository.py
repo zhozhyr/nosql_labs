@@ -19,6 +19,9 @@ class EventRepository(Protocol):
     def get_event_by_id(self, event_id: str) -> EventItem | None:
         pass
 
+    def get_event_ids_by_title(self, title: str) -> list[str]:
+        pass
+
     def update_event(
         self,
         event_id: str,
@@ -137,6 +140,10 @@ class MongoEventRepository:
         if document is None:
             return None
         return self._document_to_item(document)
+
+    def get_event_ids_by_title(self, title: str) -> list[str]:
+        cursor = self.collection.find({"title": title}, {"_id": 1})
+        return [str(document["_id"]) for document in cursor]
 
     def update_event(
         self,

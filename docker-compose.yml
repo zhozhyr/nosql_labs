@@ -10,6 +10,8 @@ services:
     depends_on:
       redis:
         condition: service_started
+      cassandra-test:
+        condition: service_started
       mongos:
         condition: service_started
       mongo-init:
@@ -31,6 +33,17 @@ services:
         else
           exec redis-server --port "$${REDIS_PORT}"
         fi
+    restart: unless-stopped
+
+  cassandra-test:
+    image: cassandra:5.0
+    env_file:
+      - .env.local
+    ports:
+      - "${CASSANDRA_PORT}:${CASSANDRA_PORT}"
+    environment:
+      CASSANDRA_CLUSTER_NAME: ndbx-lab
+      CASSANDRA_START_RPC: "true"
     restart: unless-stopped
 
   configsvr1:
