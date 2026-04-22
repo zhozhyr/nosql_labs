@@ -5,6 +5,17 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 и этот проект придерживается [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.0.5] - 2026-04-11
+
+### Добавлено
+- Реализованы endpoints `PATCH /events/{id}` и `GET /events/{id}` для редактирования и просмотра карточки мероприятия
+- Расширен endpoint `GET /events` новыми фильтрами поиска по мероприятию и организатору
+- Реализованы endpoints `GET /users`, `GET /users/{id}` и `GET /users/{id}/events` для поиска и просмотра организаторов
+- Добавлены поля `category`, `price` и `location.city` для мероприятий
+
+### Изменено
+- MongoDB-конфигурация переведена на `mongos` с replica set и шардированием коллекции `events` по `created_by`
+
 ## [1.0.4] - 2026-03-28
 
 ### Добавлено
