@@ -1,5 +1,4 @@
 import hashlib
-import json
 import time
 from datetime import UTC, datetime
 from typing import Protocol
@@ -125,10 +124,12 @@ class CassandraReactionRepository:
         title: str,
         event_ids: list[str],
     ) -> ReactionCounters:
-        cached = self._redis.get(self._cache_key(title))
+        cached = self._redis.hgetall(self._cache_key(title))
         if cached:
-            payload = json.loads(cached)
-            return ReactionCounters(**payload)
+            return ReactionCounters(
+                likes=int(cached.get("likes", 0)),
+                dislikes=int(cached.get("dislikes", 0)),
+            )
 
         counters = ReactionCounters()
         if not event_ids:
@@ -149,16 +150,22 @@ class CassandraReactionRepository:
                     counters.dislikes += 1
 
         if counters.likes > 0 or counters.dislikes > 0:
-            self._redis.setex(
+            pipeline = self._redis.pipeline()
+            pipeline.delete(self._cache_key(title))
+            pipeline.hset(
                 self._cache_key(title),
-                self._cache_ttl,
-                json.dumps(counters.model_dump()),
+                mapping={
+                    "likes": counters.likes,
+                    "dislikes": counters.dislikes,
+                },
             )
+            pipeline.expire(self._cache_key(title), self._cache_ttl)
+            pipeline.execute()
         return counters
 
     def _cache_key(self, title: str) -> str:
         title_hash = hashlib.md5(title.encode("utf-8")).hexdigest()
-        return f"events:{title_hash}:reactions"
+        return f"event:{title_hash}:reactions"
 
     def _execute_with_retry(
         self,
