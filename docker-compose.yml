@@ -12,6 +12,8 @@ services:
         condition: service_started
       cassandra-test:
         condition: service_healthy
+      cassandra-init:
+        condition: service_completed_successfully
       mongos:
         condition: service_started
       mongo-init:
@@ -65,6 +67,39 @@ services:
         ]
       start_period: ${CASSANDRA_HEALTHCHECK_START_PERIOD}
     restart: unless-stopped
+
+  cassandra-init:
+    image: cassandra:4.1
+    env_file:
+      - .env.local
+    depends_on:
+      cassandra-test:
+        condition: service_healthy
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+
+        cqlsh "${CASSANDRA_HOSTS}" "${CASSANDRA_PORT}" -e "
+        CREATE KEYSPACE IF NOT EXISTS ${CASSANDRA_KEYSPACE}
+        WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
+
+        CREATE TABLE IF NOT EXISTS ${CASSANDRA_KEYSPACE}.event_reactions (
+            event_id text,
+            created_by text,
+            like_value tinyint,
+            created_at timestamp,
+            PRIMARY KEY ((event_id), created_by)
+        );
+
+        CREATE INDEX IF NOT EXISTS event_reactions_like_value_idx
+        ON ${CASSANDRA_KEYSPACE}.event_reactions (like_value);
+
+        CREATE INDEX IF NOT EXISTS event_reactions_created_by_idx
+        ON ${CASSANDRA_KEYSPACE}.event_reactions (created_by);
+        "
+    restart: "no"
 
   configsvr1:
     image: ${MONGO_IMAGE}
