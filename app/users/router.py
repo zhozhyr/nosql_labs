@@ -6,13 +6,16 @@ from app.events.models import ListEventsResponse
 from app.events.repository import EventRepository
 from app.events.router import (
     _attach_reactions,
+    _attach_reviews,
     _is_non_empty_string,
     _is_valid_category,
     _is_valid_date,
     _normalize_date,
     _resolve_reaction_repository,
+    _resolve_review_repository,
     _serialize_event,
     _should_include_reactions,
+    _should_include_reviews,
 )
 from app.security import PasswordHasher
 from app.sessions.dependencies import get_session_store
@@ -280,14 +283,17 @@ def get_user_events(
     reaction_repository = (
         _resolve_reaction_repository(request) if include_reactions else None
     )
-    serialized_events = [
-        _serialize_event(
-            _attach_reactions(event, event_repository, reaction_repository)
-            if include_reactions and reaction_repository is not None
-            else event
-        )
-        for event in events
-    ]
+    include_reviews = _should_include_reviews(request)
+    review_repository = (
+        _resolve_review_repository(request) if include_reviews else None
+    )
+    serialized_events = []
+    for event in events:
+        if include_reactions and reaction_repository is not None:
+            event = _attach_reactions(event, event_repository, reaction_repository)
+        if include_reviews and review_repository is not None:
+            event = _attach_reviews(event, event_repository, review_repository)
+        serialized_events.append(_serialize_event(event))
     response = JSONResponse(
         status_code=200,
         content={
