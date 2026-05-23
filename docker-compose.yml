@@ -244,8 +244,8 @@ services:
       - shard2-secondary-2
       - mongos
     volumes:
-      - ./scripts/mongo-init.sh:/docker-entrypoint-initdb.d/mongo-init.sh:ro
-    command: ["bash", "/docker-entrypoint-initdb.d/mongo-init.sh"]
+      - ./scripts/mongo-init.sh:/scripts/mongo-init.sh:ro
+    command: ["bash", "/scripts/mongo-init.sh"]
     restart: "no"
 
 volumes:
