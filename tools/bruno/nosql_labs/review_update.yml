@@ -1,0 +1,34 @@
+info:
+  name: review_update
+  type: http
+  seq: 11
+
+http:
+  method: PATCH
+  url: "{{base_url}}/events/{{event_id}}/reviews/{{review_id}}"
+  auth: inherit
+  headers:
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "comment": "Bruno smoke review (updated)",
+        "rating": 4
+      }
+
+runtime:
+  variables:
+    - name: base_url
+      value: http://localhost:8080
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

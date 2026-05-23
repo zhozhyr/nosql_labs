@@ -1,0 +1,24 @@
+info:
+  name: event_like
+  type: http
+  seq: 7
+
+http:
+  method: POST
+  url: "{{base_url}}/events/{{event_id}}/like"
+  auth: inherit
+
+runtime:
+  variables:
+    - name: base_url
+      value: http://localhost:8080
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "204"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
