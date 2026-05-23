@@ -12,9 +12,6 @@ from app.reactions.models import ReactionCounters
 
 
 class ReactionRepository(Protocol):
-    def ensure_schema(self) -> None:
-        pass
-
     def set_reaction(
         self,
         event_id: str,
@@ -76,30 +73,6 @@ class CassandraReactionRepository:
             decode_responses=True,
         )
         self._cache_ttl = cache_ttl
-
-    def ensure_schema(self) -> None:
-        replication = "{'class': 'SimpleStrategy', 'replication_factor': 1}"
-        statements = [
-            (
-                f"CREATE KEYSPACE IF NOT EXISTS {self._keyspace} "
-                f"WITH replication = {replication}"
-            ),
-            (
-                f"CREATE TABLE IF NOT EXISTS {self._keyspace}.event_reactions ("
-                "event_id text, "
-                "created_by text, "
-                "like_value tinyint, "
-                "created_at timestamp, "
-                "PRIMARY KEY ((event_id), created_by)"
-                ")"
-            ),
-            (
-                f"CREATE INDEX IF NOT EXISTS event_reactions_like_value_idx "
-                f"ON {self._keyspace}.event_reactions (like_value)"
-            ),
-        ]
-        for statement in statements:
-            self._execute_with_retry(statement)
 
     def set_reaction(
         self,
