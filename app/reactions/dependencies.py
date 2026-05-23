@@ -24,7 +24,6 @@ def get_reaction_repository() -> ReactionRepository:
         redis_db=settings.redis_db,
         cache_ttl=settings.app_like_ttl,
     )
-    repository.ensure_schema()
     return repository
 
 

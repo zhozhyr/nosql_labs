@@ -75,16 +75,10 @@ services:
     depends_on:
       cassandra-test:
         condition: service_healthy
-    command:
-      - bash
-      - -c
-      - |
-        set -e
-
-        cqlsh "${CASSANDRA_HOSTS}" "${CASSANDRA_PORT}" -e "CREATE KEYSPACE IF NOT EXISTS ${CASSANDRA_KEYSPACE} WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};"
-        cqlsh "${CASSANDRA_HOSTS}" "${CASSANDRA_PORT}" -e "CREATE TABLE IF NOT EXISTS ${CASSANDRA_KEYSPACE}.event_reactions (event_id text, created_by text, like_value tinyint, created_at timestamp, PRIMARY KEY ((event_id), created_by));"
-        cqlsh "${CASSANDRA_HOSTS}" "${CASSANDRA_PORT}" -e "CREATE INDEX IF NOT EXISTS event_reactions_like_value_idx ON ${CASSANDRA_KEYSPACE}.event_reactions (like_value);"
-        cqlsh "${CASSANDRA_HOSTS}" "${CASSANDRA_PORT}" -e "CREATE INDEX IF NOT EXISTS event_reactions_created_by_idx ON ${CASSANDRA_KEYSPACE}.event_reactions (created_by);"
+    volumes:
+      - ./scripts/cassandra-init.sh:/docker-entrypoint-initdb.d/cassandra-init.sh:ro
+      - ./scripts/cassandra-init.cql:/docker-entrypoint-initdb.d/cassandra-init.cql:ro
+    command: ["bash", "/docker-entrypoint-initdb.d/cassandra-init.sh"]
     restart: "no"
 
   configsvr1:
