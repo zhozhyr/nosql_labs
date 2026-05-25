@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_port: int
     app_user_session_ttl: int
     app_like_ttl: int
+    app_event_reviews_ttl: int
 
     redis_host: str
     redis_port: int

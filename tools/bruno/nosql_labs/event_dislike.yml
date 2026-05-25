@@ -1,11 +1,11 @@
 info:
-  name: auth_logout
+  name: event_dislike
   type: http
-  seq: 12
+  seq: 8
 
 http:
   method: POST
-  url: "{{base_url}}/auth/logout"
+  url: "{{base_url}}/events/{{event_id}}/dislike"
   auth: inherit
   body:
     mode: none
@@ -18,12 +18,6 @@ runtime:
     - expression: res.status
       operator: eq
       value: "204"
-    - expression: res.headers["set-cookie"][0].includes("X-Session-Id=")
-      operator: eq
-      value: "true"
-    - expression: res.headers["set-cookie"][0].includes("Max-Age=0")
-      operator: eq
-      value: "true"
 
 settings:
   encodeUrl: true

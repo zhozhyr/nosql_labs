@@ -1,11 +1,11 @@
 info:
-  name: event_create
+  name: review_create
   type: http
-  seq: 5
+  seq: 9
 
 http:
   method: POST
-  url: "{{base_url}}/events"
+  url: "{{base_url}}/events/{{event_id}}/reviews"
   auth: inherit
   headers:
     - name: Content-Type
@@ -14,11 +14,8 @@ http:
     type: json
     data: |-
       {
-        "title": "Bruno Party",
-        "address": "г. Санкт-Петербург, ул. Пушкина, дом Колотушкина",
-        "started_at": "2026-04-01T12:00:00+03:00",
-        "finished_at": "2026-04-01T23:00:00+03:00",
-        "description": "Bruno smoke event"
+        "comment": "Bruno smoke review",
+        "rating": 5
       }
 
 runtime:
@@ -32,13 +29,10 @@ runtime:
     - expression: typeof res.body.id === "string"
       operator: eq
       value: "true"
-    - expression: res.headers["set-cookie"][0].includes("X-Session-Id=")
-      operator: eq
-      value: "true"
 
 script:
   post-response: |
-    bru.setVar("event_id", res.body.id);
+    bru.setVar("review_id", res.body.id);
 
 settings:
   encodeUrl: true
