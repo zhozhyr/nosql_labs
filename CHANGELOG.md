@@ -5,6 +5,18 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 и этот проект придерживается [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.0.3] - 2026-03-14
+
+### Добавлено
+- Реализован endpoint `POST /session` для создания и продления сессий
+- Добавлено хранение сессий в Redis с TTL, ключами формата `sid:{session_id}` и полями `created_at`/`updated_at`
+- Добавлен Redis-сервис в `docker-compose`
+- Добавлены тесты для сценариев `GET /health` и `POST /session`
+
+### Изменено
+- `GET /health` теперь возвращает существующую cookie `X-Session-Id`, не создавая и не продлевая сессию
+- Код приложения разложен по фичам: `health` и `sessions`, а `main.py` оставлен точкой входа
+
 ## [1.0.2] - 2026-02-21
 
 ### Добавлено

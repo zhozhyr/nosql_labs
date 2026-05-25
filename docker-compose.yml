@@ -7,3 +7,9 @@ services:
       - .env.local
     ports:
       - "${APP_PORT}:${APP_PORT}"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT}:${REDIS_PORT}"
+    command: redis-server --port ${REDIS_PORT}
