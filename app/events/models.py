@@ -14,6 +14,8 @@ class CreateEventRequest(BaseModel):
 class EventItem(BaseModel):
     id: str
     title: str
+    category: str | None = None
+    price: int | None = None
     description: str
     location: dict[str, str]
     created_at: str

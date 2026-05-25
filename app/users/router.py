@@ -1,6 +1,15 @@
 from fastapi import APIRouter, Body, Depends, Request, Response
 from fastapi.responses import JSONResponse
 
+from app.events.dependencies import get_event_repository
+from app.events.models import ListEventsResponse
+from app.events.repository import EventRepository
+from app.events.router import (
+    _is_non_empty_string,
+    _is_valid_category,
+    _is_valid_date,
+    _normalize_date,
+)
 from app.security import PasswordHasher
 from app.sessions.dependencies import get_session_store
 from app.sessions.service import (
@@ -11,6 +20,7 @@ from app.sessions.service import (
 from app.sessions.store import RedisSessionStore
 from app.settings import get_settings
 from app.users.dependencies import get_password_hasher, get_user_repository
+from app.users.models import ListUsersResponse, UserItem
 from app.users.repository import UserRepository
 
 router = APIRouter()
@@ -18,6 +28,20 @@ router = APIRouter()
 
 def _validate_non_empty_string(value: object) -> bool:
     return isinstance(value, str) and value.strip() != ""
+
+
+def _error_response(
+    status_code: int,
+    message: str,
+    sid: str | None,
+    ttl: int,
+    store: RedisSessionStore,
+) -> Response:
+    response = JSONResponse(status_code=status_code, content={"message": message})
+    if sid is not None:
+        store.touch_session(sid, ttl)
+        set_session_cookie(response, sid, ttl)
+    return response
 
 
 @router.post("/users")
@@ -70,4 +94,190 @@ def create_user(
     )
     response = Response(status_code=201)
     set_session_cookie(response, sid, settings.app_user_session_ttl)
+    return response
+
+
+@router.get("/users", response_model=ListUsersResponse)
+def list_users(
+    request: Request,
+    store: RedisSessionStore = Depends(get_session_store),
+    repository: UserRepository = Depends(get_user_repository),
+) -> Response:
+    settings = get_settings()
+    sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
+    params = request.query_params
+
+    name = params.get("name")
+    if name is not None and not _validate_non_empty_string(name):
+        return _error_response(
+            400,
+            'invalid "name" field',
+            sid,
+            settings.app_user_session_ttl,
+            store
+        )
+
+    user_id = params.get("id")
+    if user_id is not None and not _validate_non_empty_string(user_id):
+        return _error_response(
+            400,
+            'invalid "id" field',
+            sid,
+            settings.app_user_session_ttl,
+            store
+        )
+
+    limit: int | None = None
+    limit_raw = params.get("limit")
+    if limit_raw is not None:
+        if not limit_raw.isdigit():
+            return _error_response(
+                400,
+                'invalid "limit" field',
+                sid,
+                settings.app_user_session_ttl,
+                store
+            )
+        limit = int(limit_raw)
+
+    offset: int | None = None
+    offset_raw = params.get("offset")
+    if offset_raw is not None:
+        if not offset_raw.isdigit():
+            return _error_response(
+                400,
+                'invalid "offset" field',
+                sid,
+                settings.app_user_session_ttl,
+                store
+            )
+        offset = int(offset_raw)
+
+    users = repository.list_users(
+        name=name,
+        user_id=user_id,
+        limit=limit,
+        offset=offset
+    )
+    response = JSONResponse(
+        status_code=200,
+        content={"users": [user.model_dump() for user in users], "count": len(users)},
+    )
+    if sid is not None:
+        set_session_cookie(response, sid, settings.app_user_session_ttl)
+    return response
+
+
+@router.get("/users/{user_id}", response_model=UserItem)
+def get_user(
+    user_id: str,
+    request: Request,
+    store: RedisSessionStore = Depends(get_session_store),
+    repository: UserRepository = Depends(get_user_repository),
+) -> Response:
+    settings = get_settings()
+    sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
+    user = repository.get_user_by_id(user_id)
+    if user is None:
+        return _error_response(
+            404,
+            "Not found",
+            sid,
+            settings.app_user_session_ttl,
+            store
+        )
+
+    response = JSONResponse(status_code=200, content=user.model_dump())
+    if sid is not None:
+        set_session_cookie(response, sid, settings.app_user_session_ttl)
+    return response
+
+
+@router.get("/users/{user_id}/events", response_model=ListEventsResponse)
+def get_user_events(
+    user_id: str,
+    request: Request,
+    store: RedisSessionStore = Depends(get_session_store),
+    user_repository: UserRepository = Depends(get_user_repository),
+    event_repository: EventRepository = Depends(get_event_repository),
+) -> Response:
+    settings = get_settings()
+    sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
+    if user_repository.get_user_by_id(user_id) is None:
+        return _error_response(
+            404,
+            "User not found",
+            sid,
+            settings.app_user_session_ttl,
+            store
+        )
+
+    filters: dict[str, object] = {"created_by": user_id}
+
+    for name in ("title", "id", "city"):
+        value = request.query_params.get(name)
+        if value is not None:
+            if not _is_non_empty_string(value):
+                return _error_response(
+                    400,
+                    f'invalid "{name}" field',
+                    sid,
+                    settings.app_user_session_ttl,
+                    store,
+                )
+            filters[name] = value
+
+    category = request.query_params.get("category")
+    if category is not None:
+        if not _is_valid_category(category):
+            return _error_response(
+                400,
+                'invalid "category" field',
+                sid,
+                settings.app_user_session_ttl,
+                store,
+            )
+        filters["category"] = category
+
+    for name in ("limit", "offset", "price_from", "price_to"):
+        raw = request.query_params.get(name)
+        if raw is None:
+            continue
+        if not raw.isdigit():
+            return _error_response(
+                400,
+                f'invalid "{name}" field',
+                sid,
+                settings.app_user_session_ttl,
+                store,
+            )
+        filters[name] = int(raw)
+
+    for name in ("date_from", "date_to"):
+        value = request.query_params.get(name)
+        if value is None:
+            continue
+        if not _is_valid_date(value):
+            return _error_response(
+                400,
+                f'invalid "{name}" field',
+                sid,
+                settings.app_user_session_ttl,
+                store,
+            )
+        filters[name] = _normalize_date(value)
+
+    events = event_repository.list_events(
+        filters=filters,
+        limit=filters.get("limit") if isinstance(filters.get("limit"), int) else None,
+        offset=filters.get("offset") if isinstance(filters.get("offset"), int) else None,
+    )
+    response = JSONResponse(
+        status_code=200,
+        content={
+            "events": [event.model_dump() for event in events], "count": len(events)
+        },
+    )
+    if sid is not None:
+        set_session_cookie(response, sid, settings.app_user_session_ttl)
     return response

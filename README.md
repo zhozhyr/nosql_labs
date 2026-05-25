@@ -14,6 +14,7 @@
 - конфигурация через `.env.local`
 - Redis как инфраструктурная зависимость
 - MongoDB как хранилище пользователей и событий
+- MongoDB sharding для `events` и replica set'ы для высокой доступности
 - Swagger UI для ручной проверки API
 - Bruno-коллекция для smoke-проверок
 
@@ -73,6 +74,7 @@ make stop
 - `MONGODB_USER` — пользователь MongoDB
 - `MONGODB_PASSWORD` — пароль MongoDB
 - `MONGODB_HOST` — хост MongoDB
+- `MONGODB_HOST` — хост `mongos` роутера
 - `MONGODB_PORT` — порт MongoDB
 
 ## Текущая функциональность
@@ -121,7 +123,27 @@ Endpoint для создания и обновления анонимной по
 
 ### `GET /events`
 
-Просмотр списка событий с фильтрацией по `title` и пагинацией через `limit` и `offset`.
+Просмотр списка событий с фильтрацией по `title`, `id`, `category`, `price_from`, `price_to`, `city`, `date_from`, `date_to`, `user`, а также пагинацией через `limit` и `offset`.
+
+### `GET /events/{id}`
+
+Подробная карточка мероприятия.
+
+### `PATCH /events/{id}`
+
+Редактирование `category`, `price` и `location.city` только организатором мероприятия.
+
+### `GET /users`
+
+Поиск организаторов по `name`/`id` с пагинацией.
+
+### `GET /users/{id}`
+
+Публичная карточка организатора без `password_hash`.
+
+### `GET /users/{id}/events`
+
+Список мероприятий конкретного организатора.
 
 ## Архитектура
 
@@ -136,6 +158,9 @@ Endpoint для создания и обновления анонимной по
 - [app/users/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/users/router.py) — регистрация пользователей
 - [app/auth/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/auth/router.py) — логин и logout
 - [app/events/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/events/router.py) — создание и просмотр событий
+- [app/users/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/users/router.py) — регистрация, поиск и карточки организаторов
+- [docker-compose.yml](/Users/zhozhyr/PycharmProjects/nosql_labs/docker-compose.yml) — запуск приложения, Redis, `mongos`, config server и shard replica set'ов
+- [docker/mongo/init.sh](/Users/zhozhyr/PycharmProjects/nosql_labs/docker/mongo/init.sh) — инициализация replica set'ов и включение шардирования `events.created_by`
 - [app/settings.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/settings.py) — загрузка конфигурации из `.env.local`
 
 Поток запроса выглядит так:
