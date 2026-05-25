@@ -5,10 +5,14 @@ from app.events.dependencies import get_event_repository
 from app.events.models import ListEventsResponse
 from app.events.repository import EventRepository
 from app.events.router import (
+    _attach_reactions,
     _is_non_empty_string,
     _is_valid_category,
     _is_valid_date,
     _normalize_date,
+    _resolve_reaction_repository,
+    _serialize_event,
+    _should_include_reactions,
 )
 from app.security import PasswordHasher
 from app.sessions.dependencies import get_session_store
@@ -272,10 +276,22 @@ def get_user_events(
         limit=filters.get("limit") if isinstance(filters.get("limit"), int) else None,
         offset=filters.get("offset") if isinstance(filters.get("offset"), int) else None,
     )
+    include_reactions = _should_include_reactions(request)
+    reaction_repository = (
+        _resolve_reaction_repository(request) if include_reactions else None
+    )
+    serialized_events = [
+        _serialize_event(
+            _attach_reactions(event, event_repository, reaction_repository)
+            if include_reactions and reaction_repository is not None
+            else event
+        )
+        for event in events
+    ]
     response = JSONResponse(
         status_code=200,
         content={
-            "events": [event.model_dump() for event in events], "count": len(events)
+            "events": serialized_events, "count": len(events)
         },
     )
     if sid is not None:

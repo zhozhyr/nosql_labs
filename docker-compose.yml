@@ -10,10 +10,26 @@ services:
     depends_on:
       redis:
         condition: service_started
+      cassandra-test:
+        condition: service_healthy
+      cassandra-init:
+        condition: service_completed_successfully
       mongos:
         condition: service_started
       mongo-init:
         condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     restart: unless-stopped
 
   redis:
@@ -32,6 +48,38 @@ services:
           exec redis-server --port "$${REDIS_PORT}"
         fi
     restart: unless-stopped
+
+  cassandra-test:
+    image: cassandra:4.1
+    env_file:
+      - .env.local
+    hostname: ${CASSANDRA_HOSTS}
+    ports:
+      - "${CASSANDRA_PORT}:${CASSANDRA_PORT}"
+    environment:
+      CASSANDRA_CLUSTER_NAME: ndbx-lab
+      CASSANDRA_NATIVE_TRANSPORT_PORT: ${CASSANDRA_PORT}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "cqlsh -e 'describe keyspaces' ${CASSANDRA_HOSTS} ${CASSANDRA_PORT} || exit 1",
+        ]
+      start_period: ${CASSANDRA_HEALTHCHECK_START_PERIOD}
+    restart: unless-stopped
+
+  cassandra-init:
+    image: cassandra:4.1
+    env_file:
+      - .env.local
+    depends_on:
+      cassandra-test:
+        condition: service_healthy
+    volumes:
+      - ./scripts/cassandra-init.sh:/docker-entrypoint-initdb.d/cassandra-init.sh:ro
+      - ./scripts/cassandra-init.cql:/docker-entrypoint-initdb.d/cassandra-init.cql:ro
+    command: ["bash", "/docker-entrypoint-initdb.d/cassandra-init.sh"]
+    restart: "no"
 
   configsvr1:
     image: ${MONGO_IMAGE}

@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 
+from app.reactions.models import ReactionCounters
+
 
 class CreateEventRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -22,6 +24,7 @@ class EventItem(BaseModel):
     created_by: str
     started_at: str
     finished_at: str
+    reactions: ReactionCounters | None = None
 
 
 class ListEventsResponse(BaseModel):

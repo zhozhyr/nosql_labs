@@ -7,6 +7,8 @@ from fastapi.responses import JSONResponse
 from app.events.dependencies import get_event_repository
 from app.events.models import EventItem, ListEventsResponse
 from app.events.repository import EventRepository
+from app.reactions.dependencies import get_reaction_repository
+from app.reactions.repository import ReactionRepository
 from app.sessions.dependencies import get_session_store
 from app.sessions.service import (
     get_existing_session,
@@ -86,6 +88,50 @@ def _resolve_event_repository(request: Request) -> EventRepository:
     if provider is not None:
         return provider()
     return get_event_repository()
+
+
+def _resolve_reaction_repository(request: Request) -> ReactionRepository:
+    provider = request.app.dependency_overrides.get(get_reaction_repository)
+    if provider is not None:
+        return provider()
+    return get_reaction_repository()
+
+
+def _should_include_reactions(request: Request) -> bool:
+    raw_values = request.query_params.getlist("include")
+    if not raw_values:
+        return False
+
+    includes: set[str] = set()
+    for value in raw_values:
+        for item in value.split(","):
+            normalized = item.strip()
+            if normalized:
+                includes.add(normalized)
+    return "reactions" in includes
+
+
+def _attach_reactions(
+    event: EventItem,
+    repository: EventRepository,
+    reaction_repository: ReactionRepository,
+) -> EventItem:
+    event_ids = repository.get_event_ids_by_title(event.title)
+    reactions = reaction_repository.get_reactions_for_title(event.title, event_ids)
+    return event.model_copy(update={"reactions": reactions})
+
+
+def _warm_reactions_cache(
+    event: EventItem,
+    repository: EventRepository,
+    reaction_repository: ReactionRepository,
+) -> None:
+    event_ids = repository.get_event_ids_by_title(event.title)
+    reaction_repository.get_reactions_for_title(event.title, event_ids)
+
+
+def _serialize_event(event: EventItem) -> dict[str, object]:
+    return event.model_dump(exclude_none=True)
 
 
 @router.post("/events")
@@ -218,10 +264,22 @@ def list_events(
         limit=filters.get("limit") if isinstance(filters.get("limit"), int) else None,
         offset=filters.get("offset") if isinstance(filters.get("offset"), int) else None,
     )
+    include_reactions = _should_include_reactions(request)
+    reaction_repository = (
+        _resolve_reaction_repository(request) if include_reactions else None
+    )
+    serialized_events = [
+        _serialize_event(
+            _attach_reactions(event, repository, reaction_repository)
+            if include_reactions and reaction_repository is not None
+            else event
+        )
+        for event in events
+    ]
     response = JSONResponse(
         status_code=200,
         content={
-            "events": [event.model_dump() for event in events],
+            "events": serialized_events,
             "count": len(events),
         },
     )
@@ -249,9 +307,77 @@ def get_event(
             store
         )
 
-    response = JSONResponse(status_code=200, content=event.model_dump())
+    if _should_include_reactions(request):
+        reaction_repository = _resolve_reaction_repository(request)
+        event = _attach_reactions(event, repository, reaction_repository)
+
+    response = JSONResponse(status_code=200, content=_serialize_event(event))
     if sid is not None:
         set_session_cookie(response, sid, settings.app_user_session_ttl)
+    return response
+
+
+@router.post("/events/{event_id}/like")
+def like_event(
+    event_id: str,
+    request: Request,
+    store: RedisSessionStore = Depends(get_session_store),
+    repository: EventRepository = Depends(get_event_repository),
+    reaction_repository: ReactionRepository = Depends(get_reaction_repository),
+) -> Response:
+    settings = get_settings()
+    sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
+    session = get_existing_session(sid, store)
+    if session is None or "user_id" not in session:
+        return _error_response(401, None, sid, settings.app_user_session_ttl, store)
+
+    event = repository.get_event_by_id(event_id)
+    if event is None:
+        return _error_response(
+            404,
+            "Event not found",
+            sid,
+            settings.app_user_session_ttl,
+            store,
+        )
+
+    reaction_repository.set_reaction(event_id, str(session["user_id"]), event.title, 1)
+    _warm_reactions_cache(event, repository, reaction_repository)
+    store.touch_session(sid, settings.app_user_session_ttl)
+    response = Response(status_code=204)
+    set_session_cookie(response, sid, settings.app_user_session_ttl)
+    return response
+
+
+@router.post("/events/{event_id}/dislike")
+def dislike_event(
+    event_id: str,
+    request: Request,
+    store: RedisSessionStore = Depends(get_session_store),
+    repository: EventRepository = Depends(get_event_repository),
+    reaction_repository: ReactionRepository = Depends(get_reaction_repository),
+) -> Response:
+    settings = get_settings()
+    sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
+    session = get_existing_session(sid, store)
+    if session is None or "user_id" not in session:
+        return _error_response(401, None, sid, settings.app_user_session_ttl, store)
+
+    event = repository.get_event_by_id(event_id)
+    if event is None:
+        return _error_response(
+            404,
+            "Event not found",
+            sid,
+            settings.app_user_session_ttl,
+            store,
+        )
+
+    reaction_repository.set_reaction(event_id, str(session["user_id"]), event.title, -1)
+    _warm_reactions_cache(event, repository, reaction_repository)
+    store.touch_session(sid, settings.app_user_session_ttl)
+    response = Response(status_code=204)
+    set_session_cookie(response, sid, settings.app_user_session_ttl)
     return response
 
 
