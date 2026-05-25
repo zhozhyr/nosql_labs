@@ -1,23 +1,32 @@
 info:
-  name: session_create
+  name: user_register
   type: http
-  seq: 1
+  seq: 3
 
 http:
   method: POST
-  url: "{{base_url}}/session"
+  url: "{{base_url}}/users"
   auth: inherit
+  headers:
+    - name: Content-Type
+      value: application/json
   body:
-    mode: none
+    type: json
+    data: |-
+      {
+        "full_name": "Джон Доу",
+        "username": "bruno_user",
+        "password": "bruno_password"
+      }
 
 runtime:
   variables:
     - name: base_url
       value: http://localhost:8080
   assertions:
-    - expression: res.status === 200 || res.status === 201
+    - expression: res.status
       operator: eq
-      value: "true"
+      value: "201"
     - expression: res.headers["set-cookie"][0].includes("X-Session-Id=")
       operator: eq
       value: "true"

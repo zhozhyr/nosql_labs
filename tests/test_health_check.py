@@ -13,7 +13,7 @@ def test_health_without_cookie():
 
 
 def test_health_with_cookie_returns_same_cookie_without_creating_session():
-    client, store = create_client()
+    client, deps = create_client()
 
     response = client.get(
         "/health",
@@ -23,4 +23,4 @@ def test_health_with_cookie_returns_same_cookie_without_creating_session():
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     assert response.cookies.get(COOKIE_NAME) == "a" * 32
-    assert store.sessions == {}
+    assert deps.store.sessions == {}

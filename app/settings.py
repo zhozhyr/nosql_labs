@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +13,13 @@ class Settings(BaseSettings):
     redis_port: int
     redis_password: str
     redis_db: int
+    mongodb_database: str = Field(
+        validation_alias=AliasChoices("MONGODB_DATABASE", "MONGODB_DATABSE")
+    )
+    mongodb_user: str
+    mongodb_password: str
+    mongodb_host: str
+    mongodb_port: int
 
     model_config = SettingsConfigDict(
         env_file=".env.local",

@@ -61,3 +61,27 @@ class RedisSessionStore:
         pipe.hset(key, "updated_at", now)
         pipe.expire(key, ttl)
         pipe.execute()
+
+    def get_session(self, sid: str) -> dict[str, str] | None:
+        data = self.client.hgetall(self._key(sid))
+        if not data:
+            return None
+        return data
+
+    def set_session_user_id(self, sid: str, user_id: str, ttl: int) -> None:
+        key = self._key(sid)
+        now = self._now()
+
+        pipe = self.client.pipeline()
+        pipe.hset(
+            key,
+            mapping={
+                "user_id": user_id,
+                "updated_at": now,
+            },
+        )
+        pipe.expire(key, ttl)
+        pipe.execute()
+
+    def delete_session(self, sid: str) -> None:
+        self.client.delete(self._key(sid))

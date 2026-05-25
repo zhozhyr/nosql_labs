@@ -1,5 +1,5 @@
 services:
-  app:
+  service:
     build:
       context: .
       dockerfile: Dockerfile
@@ -7,9 +7,39 @@ services:
       - .env.local
     ports:
       - "${APP_PORT}:${APP_PORT}"
+    depends_on:
+      - redis
+      - mongodb
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
+    env_file:
+      - .env.local
     ports:
       - "${REDIS_PORT}:${REDIS_PORT}"
-    command: redis-server --port ${REDIS_PORT}
+    command:
+      - sh
+      - -c
+      - |
+        if [ -n "$${REDIS_PASSWORD}" ]; then
+          exec redis-server --port "$${REDIS_PORT}" --requirepass "$${REDIS_PASSWORD}"
+        else
+          exec redis-server --port "$${REDIS_PORT}"
+        fi
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:8.2
+    env_file:
+      - .env.local
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD}
+    ports:
+      - "${MONGODB_PORT}:${MONGODB_PORT}"
+    command:
+      - sh
+      - -c
+      - exec mongod --bind_ip_all --port "$${MONGODB_PORT}"
+    restart: unless-stopped
