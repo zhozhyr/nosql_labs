@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     cassandra_keyspace: str
     cassandra_consistency: str
 
+    neo4j_url: str
+    neo4j_username: str
+    neo4j_password: str
+    app_recommendations_ttl: int
+
     model_config = SettingsConfigDict(
         env_file=".env.local",
         env_file_encoding="utf-8",
