@@ -1,14 +1,12 @@
 info:
-  name: auth_logout
+  name: events_list
   type: http
-  seq: 7
+  seq: 6
 
 http:
-  method: POST
-  url: "{{base_url}}/auth/logout"
+  method: GET
+  url: "{{base_url}}/events?title=Bruno&limit=10&offset=0"
   auth: inherit
-  body:
-    mode: none
 
 runtime:
   variables:
@@ -17,13 +15,17 @@ runtime:
   assertions:
     - expression: res.status
       operator: eq
-      value: "204"
-    - expression: res.headers["set-cookie"][0].includes("X-Session-Id=")
+      value: "200"
+    - expression: Array.isArray(res.body.events)
       operator: eq
       value: "true"
-    - expression: res.headers["set-cookie"][0].includes("Max-Age=0")
+    - expression: res.body.count >= 1
       operator: eq
       value: "true"
+
+script:
+  post-response: |
+    bru.setVar("event_id", res.body.events[0].id);
 
 settings:
   encodeUrl: true

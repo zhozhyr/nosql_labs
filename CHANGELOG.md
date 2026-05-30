@@ -5,6 +5,24 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/),
 и этот проект придерживается [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.0.8] - 2026-05-30
+
+### Добавлено
+- Реализован эндпоинт `GET /recommendations`, возвращающий список рекомендованных мероприятий для авторизованного пользователя
+- Добавлено хранение графа лайков пользователей и мероприятий в Neo4j 
+- Добавлено кэширование рекомендаций по принципу Cache-Aside (lazy) в Redis в виде HSET по ключу `user:{user_id}:recomms` с TTL из `APP_RECOMMENDATIONS_TTL`
+
+## [1.0.7] - 2026-05-16
+
+### Добавлено
+- Реализованы эндпоинты `POST /events/{event_id}/reviews`, `GET /events/{event_id}/reviews`, `PATCH /events/{event_id}/reviews/{review_id}` для создания, просмотра и редактирования отзывов на мероприятия
+- Добавлено хранение отзывов в Cassandra
+- Добавлено кэширование данных отзывов (рейтинг, количество) в Redis
+
+### Изменено
+- Эндпоинты `GET /events`, `GET /events/{event_id}` и `GET /users/{user_id}/events` теперь поддерживают `include=reviews`
+
+
 ## [1.0.6] - 2026-04-24
 
 ### Добавлено
@@ -98,3 +116,4 @@
 - *eventhub.yml*: проверка лабораторных работ по проекту EventHub
 - *.github/scripts/*: папка для хранения скриптов, используемых в воркфлоу GitHub Actions
 - *lab_number.sh*: скрипт для получения номера текущей лабораторной работы из файла *.labrc*
+

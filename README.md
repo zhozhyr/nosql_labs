@@ -5,18 +5,20 @@
 
 `nosql_labs` — это FastAPI-приложение для выполнения лабораторных работ по курсу NoSQL.
 
-Проект запускается в Docker, использует Redis для пользовательских сессий и MongoDB для хранения пользователей и событий. Функциональность приложения расширяется по мере выполнения лабораторных работ.
+Проект запускается в Docker, использует Redis для пользовательских сессий и кэширования, MongoDB для хранения пользователей и событий, Apache Cassandra для реакций и отзывов, Neo4j для графа лайков и рекомендаций. Функциональность приложения расширяется по мере выполнения лабораторных работ.
 
 ## Что есть в проекте
 
 - FastAPI-приложение
-- запуск через Docker Compose
-- конфигурация через `.env.local`
-- Redis как инфраструктурная зависимость
+- Запуск через Docker Compose
+- Конфигурация через `.env.local`
+- Redis для пользовательских сессий и кэширования
 - MongoDB как хранилище пользователей и событий
 - MongoDB sharding для `events` и replica set'ы для высокой доступности
+- Apache Cassandra для хранения реакций и отзывов
+- Neo4j для графа лайков пользователей и алгоритма рекомендаций
 - Swagger UI для ручной проверки API
-- Bruno-коллекция для smoke-проверок
+- Bruno- и Postman-коллекции для smoke-проверок
 
 ## Технологии
 
@@ -24,8 +26,9 @@
 - FastAPI
 - Redis
 - MongoDB
+- Apache Cassandra
+- Neo4j
 - Docker Compose
-- Pytest
 
 ## Запуск
 
@@ -73,9 +76,20 @@ make stop
 - `MONGODB_DATABASE` — имя базы данных MongoDB
 - `MONGODB_USER` — пользователь MongoDB
 - `MONGODB_PASSWORD` — пароль MongoDB
-- `MONGODB_HOST` — хост MongoDB
 - `MONGODB_HOST` — хост `mongos` роутера
 - `MONGODB_PORT` — порт MongoDB
+- `CASSANDRA_HOSTS` — хост Cassandra
+- `CASSANDRA_PORT` — порт Cassandra
+- `CASSANDRA_USERNAME` — пользователь Cassandra
+- `CASSANDRA_PASSWORD` — пароль Cassandra
+- `CASSANDRA_KEYSPACE` — keyspace Cassandra
+- `CASSANDRA_CONSISTENCY` — уровень консистентности Cassandra
+- `NEO4J_URL` — bolt-URL Neo4j (`bolt://neo4j:7687` внутри docker-сети)
+- `NEO4J_USERNAME` — пользователь Neo4j
+- `NEO4J_PASSWORD` — пароль Neo4j
+- `NEO4J_BOLT_PORT` — порт Bolt-протокола Neo4j на хосте
+- `NEO4J_HTTP_PORT` — HTTP-порт Neo4j-браузера на хосте
+- `APP_RECOMMENDATIONS_TTL` — TTL кэша рекомендаций в Redis (секунды)
 
 ## Текущая функциональность
 
@@ -123,11 +137,11 @@ Endpoint для создания и обновления анонимной по
 
 ### `GET /events`
 
-Просмотр списка событий с фильтрацией по `title`, `id`, `category`, `price_from`, `price_to`, `city`, `date_from`, `date_to`, `user`, а также пагинацией через `limit` и `offset`.
+Просмотр списка событий с фильтрацией по `title`, `id`, `category`, `price_from`, `price_to`, `city`, `date_from`, `date_to`, `user`, а также пагинацией через `limit` и `offset`. Поддерживает `include=reactions` и `include=reviews`.
 
 ### `GET /events/{id}`
 
-Подробная карточка мероприятия.
+Подробная карточка мероприятия. Поддерживает `include=reactions` и `include=reviews`.
 
 ### `PATCH /events/{id}`
 
@@ -143,11 +157,41 @@ Endpoint для создания и обновления анонимной по
 
 ### `GET /users/{id}/events`
 
-Список мероприятий конкретного организатора.
+Список мероприятий конкретного организатора. Поддерживает `include=reactions` и `include=reviews`.
+
+### `POST /events/{event_id}/like` и `POST /events/{event_id}/dislike`
+
+Реакции авторизованного пользователя на мероприятие. Хранятся в Cassandra, агрегированные счётчики кэшируются в Redis по названию мероприятия.
+
+### `POST /events/{event_id}/reviews`
+
+Создание отзыва на мероприятие авторизованным пользователем. Хранится в Cassandra.
+
+### `GET /events/{event_id}/reviews`
+
+Список отзывов на мероприятие с пагинацией.
+
+### `PATCH /events/{event_id}/reviews/{review_id}`
+
+Редактирование отзыва автором.
+
+### `GET /recommendations`
+
+Список рекомендованных мероприятий для авторизованного пользователя. Алгоритм:
+
+1. Находит мероприятия, которые лайкнул пользователь, и других пользователей, тоже лайкнувших эти мероприятия.
+2. Собирает остальные мероприятия, лайкнутые этими "соседями".
+3. Исключает события, которые пользователь уже лайкал.
+4. Дедуплицирует кандидатов по `title`, оставляя самое раннее по `started_at`.
+5. Сортирует выдачу по количеству лайков title'ов в убывающем порядке.
+
+Граф `(:User)-[:LIKED]->(:Event)` живёт в Neo4j и пополняется при регистрации пользователя, создании мероприятия и постановке лайка. Дизлайки и отзывы в граф не пишутся.
+
+Результат кэшируется в Redis по принципу Cache-Aside в виде HSET по ключу `user:{user_id}:recomms` с TTL `APP_RECOMMENDATIONS_TTL`. Полные карточки мероприятий для ответа подтягиваются из MongoDB — в Neo4j хранится только граф.
 
 ## Архитектура
 
-Приложение разложено по фичам, чтобы HTTP-слой, логика сессий и работа с Redis были отделены друг от друга.
+Приложение разложено по фичам, чтобы HTTP-слой, логика сессий и работа с хранилищами были отделены друг от друга.
 
 - [app/main.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/main.py) — точка входа и сборка FastAPI-приложения
 - [app/health/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/health/router.py) — HTTP-обработчик `GET /health`
@@ -155,21 +199,21 @@ Endpoint для создания и обновления анонимной по
 - [app/sessions/service.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/sessions/service.py) — логика создания, обновления cookie и валидации `sid`
 - [app/sessions/store.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/sessions/store.py) — работа с Redis: хранение hash, TTL и обновление метаданных сессии
 - [app/sessions/dependencies.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/sessions/dependencies.py) — сборка Redis store для FastAPI dependency injection
-- [app/users/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/users/router.py) — регистрация пользователей
+- [app/users/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/users/router.py) — регистрация, поиск и карточки организаторов
 - [app/auth/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/auth/router.py) — логин и logout
 - [app/events/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/events/router.py) — создание и просмотр событий
-- [app/users/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/users/router.py) — регистрация, поиск и карточки организаторов
-- [docker-compose.yml](/Users/zhozhyr/PycharmProjects/nosql_labs/docker-compose.yml) — запуск приложения, Redis, `mongos`, config server и shard replica set'ов
-- [docker/mongo/init.sh](/Users/zhozhyr/PycharmProjects/nosql_labs/docker/mongo/init.sh) — инициализация replica set'ов и включение шардирования `events.created_by`
+- [app/reactions/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/reactions/router.py) — реакции на мероприятия
+- [app/reactions/repository.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/reactions/repository.py) — хранение реакций в Cassandra и кэширование в Redis
+- [app/reviews/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/reviews/router.py) — отзывы на мероприятия
+- [app/reviews/repository.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/reviews/repository.py) — хранение отзывов в Cassandra и кэширование в Redis
+- [app/recommendations/router.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/recommendations/router.py) — HTTP-обработчик `GET /recommendations`
+- [app/recommendations/graph.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/recommendations/graph.py) — клиент Neo4j и Cypher-алгоритм рекомендаций
+- [app/recommendations/cache.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/recommendations/cache.py) — Cache-Aside кэш рекомендаций в Redis (HSET + TTL)
 - [app/settings.py](/Users/zhozhyr/PycharmProjects/nosql_labs/app/settings.py) — загрузка конфигурации из `.env.local`
-
-Поток запроса выглядит так:
-
-1. HTTP-запрос приходит в router.
-2. Router получает cookie и конфигурацию.
-3. Session service решает, нужно обновить существующую сессию или создать новую.
-4. Session store выполняет операции в Redis.
-5. Router возвращает HTTP-ответ и устанавливает cookie.
+- [docker-compose.yml](/Users/zhozhyr/PycharmProjects/nosql_labs/docker-compose.yml) — запуск приложения, Redis, Cassandra, Neo4j, `mongos`, config server и shard replica set'ов
+- [scripts/mongo-init.sh](/Users/zhozhyr/PycharmProjects/nosql_labs/scripts/mongo-init.sh) — инициализация MongoDB replica set'ов и включение шардирования `events.created_by`
+- [scripts/cassandra-init.sh](/Users/zhozhyr/PycharmProjects/nosql_labs/scripts/cassandra-init.sh) — инициализация схемы Cassandra (keyspace, таблицы, индексы)
+- [scripts/cassandra-init.cql](/Users/zhozhyr/PycharmProjects/nosql_labs/scripts/cassandra-init.cql) — CQL-скрипт создания схемы
 
 ## Проверка API
 
@@ -199,7 +243,7 @@ curl -i http://localhost:8080/health
 
 ### Bruno
 
-В проекте есть Bruno-коллекция в каталоге [tools/bruno/nosql_labs](/Users/zhozhyr/PycharmProjects/nosql_labs/tools/bruno/nosql_labs).
+В проекте есть Bruno-коллекция в каталоге [api/bruno/nosql_labs](/Users/zhozhyr/PycharmProjects/nosql_labs/tools/bruno/nosql_labs).
 
 Её можно использовать для smoke-проверки:
 
@@ -209,27 +253,31 @@ curl -i http://localhost:8080/health
 - `POST /auth/login`
 - `POST /events`
 - `GET /events`
+- `POST /events/{event_id}/like`
+- `POST /events/{event_id}/dislike`
+- `POST /events/{event_id}/reviews`
+- `GET /events/{event_id}/reviews`
+- `GET /recommendations`
 - `POST /auth/logout`
 
-## Тесты
+### Postman
 
-Запуск тестов:
-
-```bash
-poetry run pytest -q
-```
+В каталоге [api/postman](/Users/zhozhyr/PycharmProjects/nosql_labs/tools/postman) лежит коллекция [nosql_labs.postman_collection.json](/Users/zhozhyr/PycharmProjects/nosql_labs/tools/postman/nosql_labs.postman_collection.json), полностью дублирующая запросы Bruno-коллекции.
 
 ## Структура проекта
 
 - [app](/Users/zhozhyr/PycharmProjects/nosql_labs/app) — приложение и основная логика
 - [app/health](/Users/zhozhyr/PycharmProjects/nosql_labs/app/health) — health-check API
 - [app/sessions](/Users/zhozhyr/PycharmProjects/nosql_labs/app/sessions) — сессии и работа с Redis
-- [tests](/Users/zhozhyr/PycharmProjects/nosql_labs/tests) — тесты
-- [tools](/Users/zhozhyr/PycharmProjects/nosql_labs/tools) — вспомогательные артефакты, включая Bruno-коллекцию
-- [docker-compose.yml](/Users/zhozhyr/PycharmProjects/nosql_labs/docker-compose.yml) — запуск приложения и Redis
+- [app/reactions](/Users/zhozhyr/PycharmProjects/nosql_labs/app/reactions) — реакции на мероприятия (Cassandra + Redis)
+- [app/reviews](/Users/zhozhyr/PycharmProjects/nosql_labs/app/reviews) — отзывы на мероприятия (Cassandra + Redis)
+- [app/recommendations](/Users/zhozhyr/PycharmProjects/nosql_labs/app/recommendations) — рекомендации мероприятий (Neo4j + Redis)
+- [scripts](/Users/zhozhyr/PycharmProjects/nosql_labs/scripts) — скрипты инициализации MongoDB и Cassandra
+- [api](/Users/zhozhyr/PycharmProjects/nosql_labs/api) — вспомогательные артефакты, включая Bruno- и Postman-коллекции
+- [docker-compose.yml](/Users/zhozhyr/PycharmProjects/nosql_labs/docker-compose.yml) — запуск приложения и инфраструктуры
 - [.env.local](/Users/zhozhyr/PycharmProjects/nosql_labs/.env.local) — конфигурация окружения
 - [Makefile](/Users/zhozhyr/PycharmProjects/nosql_labs/Makefile) — команды для запуска и остановки проекта
 
 ## Назначение репозитория
 
-Этот репозиторий используется как рабочий проект для лабораторных работ по NoSQL. По мере выполнения следующих лабораторных работ функциональность приложения может расширяться, а README и документация будут обновляться вместе с проектом.
+Этот репозиторий используется как рабочий проект для лабораторных работ по NoSQL.

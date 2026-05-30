@@ -1,0 +1,26 @@
+info:
+  name: event_dislike
+  type: http
+  seq: 8
+
+http:
+  method: POST
+  url: "{{base_url}}/events/{{event_id}}/dislike"
+  auth: inherit
+  body:
+    mode: none
+
+runtime:
+  variables:
+    - name: base_url
+      value: http://localhost:8080
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "204"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

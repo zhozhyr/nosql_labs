@@ -9,6 +9,10 @@ from app.events.models import EventItem, ListEventsResponse
 from app.events.repository import EventRepository
 from app.reactions.dependencies import get_reaction_repository
 from app.reactions.repository import ReactionRepository
+from app.recommendations.dependencies import get_graph_repository
+from app.recommendations.graph import GraphRepository
+from app.reviews.dependencies import get_review_repository
+from app.reviews.repository import ReviewRepository
 from app.sessions.dependencies import get_session_store
 from app.sessions.service import (
     get_existing_session,
@@ -134,11 +138,43 @@ def _serialize_event(event: EventItem) -> dict[str, object]:
     return event.model_dump(exclude_none=True)
 
 
+def _resolve_review_repository(request: Request) -> ReviewRepository:
+    provider = request.app.dependency_overrides.get(get_review_repository)
+    if provider is not None:
+        return provider()
+    return get_review_repository()
+
+
+def _should_include_reviews(request: Request) -> bool:
+    raw_values = request.query_params.getlist("include")
+    if not raw_values:
+        return False
+
+    includes: set[str] = set()
+    for value in raw_values:
+        for item in value.split(","):
+            normalized = item.strip()
+            if normalized:
+                includes.add(normalized)
+    return "reviews" in includes
+
+
+def _attach_reviews(
+    event: EventItem,
+    repository: EventRepository,
+    review_repository: ReviewRepository,
+) -> EventItem:
+    event_ids = repository.get_event_ids_by_title(event.title)
+    reviews = review_repository.get_reviews_for_title(event.title, event_ids)
+    return event.model_copy(update={"reviews": reviews})
+
+
 @router.post("/events")
 def create_event(
     request: Request,
     payload: object = Body(default_factory=dict),
     store: RedisSessionStore = Depends(get_session_store),
+    graph: GraphRepository = Depends(get_graph_repository),
 ) -> Response:
     settings = get_settings()
     sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
@@ -188,6 +224,8 @@ def create_event(
             settings.app_user_session_ttl,
             store,
         )
+
+    graph.add_event(event_id, str(fields["title"]).strip())
 
     store.touch_session(sid, settings.app_user_session_ttl)
     response = JSONResponse(status_code=201, content={"id": event_id})
@@ -268,14 +306,17 @@ def list_events(
     reaction_repository = (
         _resolve_reaction_repository(request) if include_reactions else None
     )
-    serialized_events = [
-        _serialize_event(
-            _attach_reactions(event, repository, reaction_repository)
-            if include_reactions and reaction_repository is not None
-            else event
-        )
-        for event in events
-    ]
+    include_reviews = _should_include_reviews(request)
+    review_repository = (
+        _resolve_review_repository(request) if include_reviews else None
+    )
+    serialized_events = []
+    for event in events:
+        if include_reactions and reaction_repository is not None:
+            event = _attach_reactions(event, repository, reaction_repository)
+        if include_reviews and review_repository is not None:
+            event = _attach_reviews(event, repository, review_repository)
+        serialized_events.append(_serialize_event(event))
     response = JSONResponse(
         status_code=200,
         content={
@@ -311,6 +352,10 @@ def get_event(
         reaction_repository = _resolve_reaction_repository(request)
         event = _attach_reactions(event, repository, reaction_repository)
 
+    if _should_include_reviews(request):
+        review_repository = _resolve_review_repository(request)
+        event = _attach_reviews(event, repository, review_repository)
+
     response = JSONResponse(status_code=200, content=_serialize_event(event))
     if sid is not None:
         set_session_cookie(response, sid, settings.app_user_session_ttl)
@@ -324,6 +369,7 @@ def like_event(
     store: RedisSessionStore = Depends(get_session_store),
     repository: EventRepository = Depends(get_event_repository),
     reaction_repository: ReactionRepository = Depends(get_reaction_repository),
+    graph: GraphRepository = Depends(get_graph_repository),
 ) -> Response:
     settings = get_settings()
     sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
@@ -343,6 +389,7 @@ def like_event(
 
     reaction_repository.set_reaction(event_id, str(session["user_id"]), event.title, 1)
     _warm_reactions_cache(event, repository, reaction_repository)
+    graph.add_like(str(session["user_id"]), event_id, event.title)
     store.touch_session(sid, settings.app_user_session_ttl)
     response = Response(status_code=204)
     set_session_cookie(response, sid, settings.app_user_session_ttl)

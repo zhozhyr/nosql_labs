@@ -36,6 +36,10 @@ runtime:
       operator: eq
       value: "true"
 
+script:
+  post-response: |
+    bru.setVar("event_id", res.body.id);
+
 settings:
   encodeUrl: true
   timeout: 0

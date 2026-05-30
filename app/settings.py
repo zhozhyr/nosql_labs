@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_port: int
     app_user_session_ttl: int
     app_like_ttl: int
+    app_event_reviews_ttl: int
 
     redis_host: str
     redis_port: int
@@ -27,6 +28,11 @@ class Settings(BaseSettings):
     cassandra_password: str
     cassandra_keyspace: str
     cassandra_consistency: str
+
+    neo4j_url: str
+    neo4j_username: str
+    neo4j_password: str
+    app_recommendations_ttl: int
 
     model_config = SettingsConfigDict(
         env_file=".env.local",
