@@ -1,0 +1,327 @@
+{
+  "info": {
+    "name": "nosql_labs",
+    "_postman_id": "f5b6b3ba-7d2e-4f4b-8e6e-7b1e0fb7b001",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Postman-зеркало Bruno-коллекции из tools/bruno/nosql_labs. Использует переменные коллекции base_url, event_id, review_id."
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080" },
+    { "key": "event_id", "value": "" },
+    { "key": "review_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "session_create",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": { "raw": "{{base_url}}/session", "host": ["{{base_url}}"], "path": ["session"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200 or 201', () => pm.expect([200,201]).to.include(pm.response.code));",
+              "pm.test('Set-Cookie X-Session-Id', () => pm.expect(pm.response.headers.get('Set-Cookie') || '').to.include('X-Session-Id='));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "health_with_cookie",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "pm.test('body.status == ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "user_register",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"full_name\": \"Джон Доу\",\n  \"username\": \"postman_user\",\n  \"password\": \"postman_password\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/users", "host": ["{{base_url}}"], "path": ["users"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "pm.test('Set-Cookie X-Session-Id', () => pm.expect(pm.response.headers.get('Set-Cookie') || '').to.include('X-Session-Id='));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "auth_login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"postman_user\",\n  \"password\": \"postman_password\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 204', () => pm.response.to.have.status(204));",
+              "pm.test('Set-Cookie X-Session-Id', () => pm.expect(pm.response.headers.get('Set-Cookie') || '').to.include('X-Session-Id='));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "event_create",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Postman Party\",\n  \"address\": \"г. Санкт-Петербург, ул. Пушкина, дом Колотушкина\",\n  \"started_at\": \"2026-04-01T12:00:00+03:00\",\n  \"finished_at\": \"2026-04-01T23:00:00+03:00\",\n  \"description\": \"Postman smoke event\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/events", "host": ["{{base_url}}"], "path": ["events"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const id = pm.response.json().id;",
+              "pm.expect(id).to.be.a('string');",
+              "pm.collectionVariables.set('event_id', id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "events_list",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/events?title=Postman&limit=10&offset=0",
+          "host": ["{{base_url}}"],
+          "path": ["events"],
+          "query": [
+            { "key": "title", "value": "Postman" },
+            { "key": "limit", "value": "10" },
+            { "key": "offset", "value": "0" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.expect(body.events).to.be.an('array');",
+              "if (body.events.length > 0) pm.collectionVariables.set('event_id', body.events[0].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "event_like",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/events/{{event_id}}/like",
+          "host": ["{{base_url}}"],
+          "path": ["events", "{{event_id}}", "like"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": ["pm.test('status 204', () => pm.response.to.have.status(204));"]
+          }
+        }
+      ]
+    },
+    {
+      "name": "event_dislike",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/events/{{event_id}}/dislike",
+          "host": ["{{base_url}}"],
+          "path": ["events", "{{event_id}}", "dislike"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": ["pm.test('status 204', () => pm.response.to.have.status(204));"]
+          }
+        }
+      ]
+    },
+    {
+      "name": "review_create",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"comment\": \"Postman smoke review\",\n  \"rating\": 5\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/events/{{event_id}}/reviews",
+          "host": ["{{base_url}}"],
+          "path": ["events", "{{event_id}}", "reviews"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "const id = pm.response.json().id;",
+              "pm.expect(id).to.be.a('string');",
+              "pm.collectionVariables.set('review_id', id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reviews_list",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/events/{{event_id}}/reviews?limit=10&offset=0",
+          "host": ["{{base_url}}"],
+          "path": ["events", "{{event_id}}", "reviews"],
+          "query": [
+            { "key": "limit", "value": "10" },
+            { "key": "offset", "value": "0" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.expect(body.reviews).to.be.an('array');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "review_update",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"comment\": \"Postman smoke review (updated)\",\n  \"rating\": 4\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/events/{{event_id}}/reviews/{{review_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["events", "{{event_id}}", "reviews", "{{review_id}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": ["pm.test('status 200', () => pm.response.to.have.status(200));"]
+          }
+        }
+      ]
+    },
+    {
+      "name": "recommendations_list",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/recommendations", "host": ["{{base_url}}"], "path": ["recommendations"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.expect(body.events).to.be.an('array');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "auth_logout",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 204', () => pm.response.to.have.status(204));",
+              "pm.test('cookie expired', () => pm.expect(pm.response.headers.get('Set-Cookie') || '').to.include('Max-Age=0'));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
