@@ -24,5 +24,4 @@ def get_review_repository() -> ReviewRepository:
         redis_db=settings.redis_db,
         cache_ttl=settings.app_event_reviews_ttl,
     )
-    repository.ensure_schema()
     return repository
