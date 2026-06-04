@@ -138,7 +138,7 @@ Swagger UI доступен после запуска приложения:
 - [api/bruno/nosql_labs](api/bruno/nosql_labs) — Bruno-коллекция
 - [api/postman/nosql_labs.postman_collection.json](api/postman/nosql_labs.postman_collection.json) — Postman-коллекция
 
-Основные endpoints:
+Основные эндпоинты:
 
 | Метод | Endpoint | Назначение |
 | --- | --- | --- |
@@ -358,12 +358,6 @@ make stop     # остановка
 make clean    # остановка с удалением volumes
 make lint     # проверка качества кода средствами isort & flake8
 ```
-
-После запуска:
-- приложение: [http://localhost:8080](http://localhost:8080)
-- Swagger UI: [http://localhost:8080/docs](http://localhost:8080/docs)
-- Neo4j Browser: [http://localhost:7474](http://localhost:7474)
-
 ## Конфигурация
 
 Основной источник конфигурации — `.env.local`. Приложение загружает переменные через `pydantic-settings`, Docker Compose использует тот же файл как `env_file`.
