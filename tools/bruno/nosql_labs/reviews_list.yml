@@ -1,11 +1,11 @@
 info:
-  name: events_list
+  name: reviews_list
   type: http
-  seq: 6
+  seq: 10
 
 http:
   method: GET
-  url: "{{base_url}}/events?title=Bruno&limit=10&offset=0"
+  url: "{{base_url}}/events/{{event_id}}/reviews?limit=10&offset=0"
   auth: inherit
 
 runtime:
@@ -16,16 +16,12 @@ runtime:
     - expression: res.status
       operator: eq
       value: "200"
-    - expression: Array.isArray(res.body.events)
+    - expression: Array.isArray(res.body.reviews)
       operator: eq
       value: "true"
     - expression: res.body.count >= 1
       operator: eq
       value: "true"
-
-script:
-  post-response: |
-    bru.setVar("event_id", res.body.events[0].id);
 
 settings:
   encodeUrl: true
