@@ -24,3 +24,9 @@ stop:
 .PHONY: clean
 clean:
 	docker compose --env-file .env.local down -v
+
+# Runs linters (isort check + flake8).
+.PHONY: lint
+lint:
+	poetry run isort --check-only app
+	poetry run flake8 app

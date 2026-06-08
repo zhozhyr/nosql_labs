@@ -9,6 +9,8 @@ from app.events.models import EventItem, ListEventsResponse
 from app.events.repository import EventRepository
 from app.reactions.dependencies import get_reaction_repository
 from app.reactions.repository import ReactionRepository
+from app.recommendations.dependencies import get_graph_repository
+from app.recommendations.graph import GraphRepository
 from app.reviews.dependencies import get_review_repository
 from app.reviews.repository import ReviewRepository
 from app.sessions.dependencies import get_session_store
@@ -172,6 +174,7 @@ def create_event(
     request: Request,
     payload: object = Body(default_factory=dict),
     store: RedisSessionStore = Depends(get_session_store),
+    graph: GraphRepository = Depends(get_graph_repository),
 ) -> Response:
     settings = get_settings()
     sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
@@ -221,6 +224,8 @@ def create_event(
             settings.app_user_session_ttl,
             store,
         )
+
+    graph.add_event(event_id, str(fields["title"]).strip())
 
     store.touch_session(sid, settings.app_user_session_ttl)
     response = JSONResponse(status_code=201, content={"id": event_id})
@@ -364,6 +369,7 @@ def like_event(
     store: RedisSessionStore = Depends(get_session_store),
     repository: EventRepository = Depends(get_event_repository),
     reaction_repository: ReactionRepository = Depends(get_reaction_repository),
+    graph: GraphRepository = Depends(get_graph_repository),
 ) -> Response:
     settings = get_settings()
     sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
@@ -383,6 +389,7 @@ def like_event(
 
     reaction_repository.set_reaction(event_id, str(session["user_id"]), event.title, 1)
     _warm_reactions_cache(event, repository, reaction_repository)
+    graph.add_like(str(session["user_id"]), event_id, event.title)
     store.touch_session(sid, settings.app_user_session_ttl)
     response = Response(status_code=204)
     set_session_cookie(response, sid, settings.app_user_session_ttl)

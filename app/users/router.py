@@ -17,6 +17,8 @@ from app.events.router import (
     _should_include_reactions,
     _should_include_reviews,
 )
+from app.recommendations.dependencies import get_graph_repository
+from app.recommendations.graph import GraphRepository
 from app.security import PasswordHasher
 from app.sessions.dependencies import get_session_store
 from app.sessions.service import (
@@ -58,6 +60,7 @@ def create_user(
     store: RedisSessionStore = Depends(get_session_store),
     repository: UserRepository = Depends(get_user_repository),
     hasher: PasswordHasher = Depends(get_password_hasher),
+    graph: GraphRepository = Depends(get_graph_repository),
 ) -> Response:
     settings = get_settings()
     current_sid = get_existing_session_id(request.cookies.get("X-Session-Id"), store)
@@ -93,6 +96,8 @@ def create_user(
             store.touch_session(current_sid, settings.app_user_session_ttl)
             set_session_cookie(response, current_sid, settings.app_user_session_ttl)
         return response
+
+    graph.add_user(user_id)
 
     sid = start_fresh_authenticated_session(
         user_id,
